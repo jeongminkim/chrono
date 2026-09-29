@@ -62,10 +62,10 @@ docker compose run --rm -v "$PWD/export:/export" chrono node store.mjs export /e
 
 ## Docker Compose 운영
 
-기존 Nginx 컨테이너가 참여 중인 Docker 네트워크 이름을 지정해 실행합니다. 기본값은 `proxy`입니다.
+`chrono` 컨테이너는 기존 Nginx 컨테이너가 참여 중인 외부 Docker 네트워크 `websvr`에 연결됩니다. 네트워크 이름이 다르면 `compose.yaml`의 `networks`를 수정하세요. 네트워크가 없다면 먼저 만듭니다(`docker network create websvr`).
 
 ```bash
-NGINX_NETWORK=proxy docker compose up -d --build
+docker compose up -d --build
 ```
 
 `chrono` 컨테이너만 named volume `chrono-store`(`/var/lib/chrono`, DB와 미디어)와 호스트 `import/`(`/import`)를 마운트합니다. 컨테이너는 `node` 사용자(uid 1000)로 실행되므로, Linux 호스트에서는 import 원본을 삭제할 수 있도록 `import/`에 uid 1000의 쓰기 권한이 필요합니다. Nginx 컨테이너에는 이 프로젝트의 경로나 볼륨을 마운트하지 않습니다.
