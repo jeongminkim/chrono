@@ -1,0 +1,26 @@
+{
+  "name": "chrono-timeline",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "start": "node server.mjs",
+    "import": "node store.mjs import import",
+    "export": "node store.mjs export export",
+    "build": "tsc --noEmit && vite build",
+    "test": "node --experimental-strip-types --test src/data.test.ts src/store.test.mjs src/server.test.mjs"
+  },
+  "dependencies": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.4",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.1.2",
+    "typescript": "5.9.3",
+    "vite": "7.3.6"
+  }
+}

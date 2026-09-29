@@ -1,0 +1,4 @@
+/* Pin-Sans-equivalent. Pin Sans is proprietary; Hanken Grotesk is the nearest
+   open substitute (humanist grotesque, warm apertures, 400-800 weights).
+   Replace these @font-face rules with real Pin Sans binaries when available. */
+@import url("https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,300..800;1,300..800&display=swap");

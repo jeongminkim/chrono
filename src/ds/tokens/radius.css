@@ -1,0 +1,9 @@
+:root{
+--radius-standard:12px;  /* small cards, links */
+--radius-button:16px;    /* buttons, inputs, medium cards */
+--radius-comfortable:20px; /* feature cards, images */
+--radius-large:28px;
+--radius-section:32px;
+--radius-hero:40px;
+--radius-circle:50%;
+}

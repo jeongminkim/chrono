@@ -1,0 +1,8 @@
+:root{
+--motion-duration-fast:120ms; /* @kind other */
+--motion-duration-base:180ms; /* @kind other */
+--motion-duration-slow:300ms; /* @kind other */
+--motion-ease-standard:cubic-bezier(.25,.1,.25,1); /* @kind other */
+--motion-ease-out:cubic-bezier(.16,1,.3,1); /* @kind other */
+--motion-press-scale:0.96; /* @kind other */
+}

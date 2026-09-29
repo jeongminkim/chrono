@@ -1,0 +1,135 @@
+/* 여운 (Yoin) — color tokens. Light + dark. Amber = brand, Navy = primary action. */
+:root{
+/* ---- base: brand ---- */
+--base-color-amber-500:#b4763a;
+--base-color-hover-amber-500:#9a6532;
+--base-color-pressed-amber-500:#83562a;
+--base-color-navy-700:#1f3864;
+--base-color-hover-navy-700:#16294a;
+--base-color-green-700:#103c25;
+--base-color-hover-green-700:#0b2819;
+--base-color-purple-recommendation:#6845ab;
+--base-color-purple-performance:#7e238b;
+
+/* ---- base: warm neutral ramp (olive / sand, never cool steel) ---- */
+--base-color-white:#ffffff;
+--base-color-page-50:#fbfaf7;
+--base-color-fog-100:#f6f6f3;
+--base-color-sand-200:#e5e5e0;
+--base-color-warm-250:#e0e0d9;
+--base-color-grayscale-300:#c8c8c1;
+--base-color-hover-grayscale-150:#bcbcb3;
+--base-color-silver-500:#91918c;
+--base-color-olive-600:#62625b;
+--base-color-dark-800:#33332e;
+--base-color-plum-900:#211922;
+--base-color-black:#000000;
+
+/* ---- base: state + interactive ---- */
+--base-color-success-600:#3d7a5f;
+--base-color-warn-wash:#fdf8f0;
+--base-color-warn-line:#f0e2ce;
+--base-color-danger-600:#a8534a;
+--base-color-blue-focus:#435ee5;
+--base-color-blue-link:#2b48d4;
+--base-color-wash-warm:hsla(60,20%,98%,.5);
+
+/* ---- base: map ---- */
+--base-color-map-canvas-from:#edf1ec;
+--base-color-map-canvas-to:#e2e9e6;
+
+/* ---- semantic: text ---- */
+--sema-color-text-default:var(--base-color-plum-900);
+--sema-color-text-strong:var(--base-color-plum-900);
+--sema-color-text-subtle:var(--base-color-olive-600);
+--sema-color-text-disabled:var(--base-color-silver-500);
+--sema-color-text-inverse:var(--base-color-white);
+--sema-color-text-link:var(--base-color-blue-link);
+--sema-color-text-error:var(--base-color-danger-600);
+/* Amber fails 4.5:1 on page — large type (18pt+), icons and lines only. */
+--sema-color-text-accent-large:var(--base-color-amber-500);
+
+/* ---- semantic: surface ---- */
+--sema-color-background-page:var(--base-color-page-50);
+--sema-color-background-card:var(--base-color-white);
+--sema-color-background-subtle:var(--base-color-fog-100);
+--sema-color-background-secondary:var(--base-color-sand-200);
+--sema-color-hover-background-secondary:var(--base-color-warm-250);
+--sema-color-background-circle:var(--base-color-warm-250);
+--sema-color-background-wash:var(--base-color-wash-warm);
+--sema-color-background-inverse:var(--base-color-dark-800);
+--sema-color-background-accent:var(--base-color-amber-500);
+--sema-color-hover-background-accent:var(--base-color-hover-amber-500);
+--sema-color-background-action:var(--base-color-navy-700);
+--sema-color-hover-background-action:var(--base-color-hover-navy-700);
+--sema-color-background-success:var(--base-color-success-600);
+--sema-color-background-warn:var(--base-color-warn-wash);
+--sema-color-background-danger:var(--base-color-danger-600);
+--sema-color-background-nature:var(--base-color-green-700);
+--sema-color-background-map:linear-gradient(160deg,var(--base-color-map-canvas-from),var(--base-color-map-canvas-to));
+
+/* ---- semantic: border ---- */
+--sema-color-border-default:var(--base-color-silver-500);
+--sema-color-border-subtle:var(--base-color-sand-200);
+--sema-color-border-hover:var(--base-color-hover-grayscale-150);
+--sema-color-border-disabled:var(--base-color-grayscale-300);
+--sema-color-border-focus-outer-default:var(--base-color-blue-focus);
+--sema-color-border-warn:var(--base-color-warn-line);
+--sema-color-border-error:var(--base-color-danger-600);
+--sema-color-border-selected:var(--base-color-amber-500);
+
+/* ---- semantic: overlay on photography ---- */
+--sema-color-scrim-top:rgba(33,25,34,.45);
+--sema-color-scrim-bottom:rgba(33,25,34,.35);
+
+/* ---- component aliases ---- */
+/* Primary action is navy with white text (11.6:1). */
+--comp-button-color-background-primary:var(--sema-color-background-action);
+--comp-button-color-text-primary:var(--base-color-white);
+--comp-button-color-background-primary-hover:var(--sema-color-hover-background-action);
+/* Amber fill takes plum-black text (4.56:1), never white (3.75:1). */
+--comp-button-color-background-accent:var(--sema-color-background-accent);
+--comp-button-color-text-accent:var(--base-color-plum-900);
+--comp-button-color-background-secondary:var(--sema-color-background-secondary);
+--comp-button-color-text-secondary:var(--base-color-plum-900);
+--comp-button-color-background-circle:var(--sema-color-background-circle);
+--comp-button-color-text-transparent-disabled:var(--base-color-silver-500);
+--comp-badge-color-background-wash-light:var(--base-color-wash-warm);
+--comp-input-color-border:var(--sema-color-border-default);
+--comp-map-color-route:var(--base-color-amber-500);
+--comp-map-color-pin-endpoint:var(--base-color-navy-700);
+}
+
+/* Dark: warm neutral identity kept, saturation held back so backgrounds
+   don't tint photography. Hover inverts — lighter, not darker. */
+:root[data-theme="dark"]{
+--base-color-amber-500:#d19861;
+--base-color-hover-amber-500:#d8a879;
+--base-color-pressed-amber-500:#b4763a;
+--base-color-navy-700:#5e86c9;
+--base-color-hover-navy-700:#7fa0d9;
+--base-color-page-50:#1a1a18;
+--base-color-fog-100:#1f1f1c;
+--base-color-white:#232321;
+--base-color-warm-250:#2c2c29;
+--base-color-sand-200:#33332e;
+--base-color-grayscale-300:#3a3a36;
+--base-color-hover-grayscale-150:#4a4a45;
+--base-color-silver-500:#75736c;
+--base-color-olive-600:#a8a69e;
+--base-color-plum-900:#f2f0eb;
+--base-color-dark-800:#f2f0eb;
+--base-color-success-600:#6fa88c;
+--base-color-danger-600:#e08d82;
+--base-color-blue-focus:#8296f2;
+--base-color-blue-link:#8296f2;
+--base-color-warn-wash:#2a241c;
+--base-color-warn-line:#4a3e2c;
+--base-color-wash-warm:hsla(60,8%,14%,.55);
+--base-color-map-canvas-from:#1e241f;
+--base-color-map-canvas-to:#1a1e1c;
+--sema-color-text-inverse:var(--base-color-page-50);
+--sema-color-background-card:#232321;
+--sema-color-background-inverse:#f2f0eb;
+--comp-button-color-text-primary:var(--base-color-page-50);
+}

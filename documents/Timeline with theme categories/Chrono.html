@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Timeline</title>
+<link rel="stylesheet" href="_ds/yoin-8d1d8a4b-f467-441d-b0d7-7809cf6add65/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/yoin-8d1d8a4b-f467-441d-b0d7-7809cf6add65/tokens/colors.css">
+<link rel="stylesheet" href="_ds/yoin-8d1d8a4b-f467-441d-b0d7-7809cf6add65/tokens/typography.css">
+<link rel="stylesheet" href="_ds/yoin-8d1d8a4b-f467-441d-b0d7-7809cf6add65/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/yoin-8d1d8a4b-f467-441d-b0d7-7809cf6add65/tokens/radius.css">
+<link rel="stylesheet" href="_ds/yoin-8d1d8a4b-f467-441d-b0d7-7809cf6add65/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/yoin-8d1d8a4b-f467-441d-b0d7-7809cf6add65/tokens/motion.css">
+<link rel="stylesheet" href="_ds/yoin-8d1d8a4b-f467-441d-b0d7-7809cf6add65/tokens/base.css">
+<link rel="stylesheet" href="_ds/yoin-8d1d8a4b-f467-441d-b0d7-7809cf6add65/styles.css">
+<style>
+html,body{margin:0;height:100%}
+body{background:var(--sema-color-background-page);color:var(--sema-color-text-default);font-family:var(--font-family-core),"Apple SD Gothic Neo","Pretendard","Noto Sans KR",sans-serif;transition:background 180ms}
+a{color:var(--sema-color-text-link)}a:hover{color:var(--base-color-hover-navy-700)}
+.app{display:flex;height:100vh}
+.lnb{flex:none;background:var(--sema-color-background-subtle);padding:32px 20px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:32px;overflow-y:auto;min-width:0}
+.lnb-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-left:4px}
+.wordmark{font-size:var(--font-size-heading);font-weight:700;letter-spacing:var(--letter-spacing-heading);color:var(--base-color-amber-500);line-height:1}
+.lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--sema-color-text-subtle);padding:0 4px 8px}
+.all{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border-radius:var(--radius-button);background:var(--sema-color-background-card);transition:background 120ms}
+.all:hover{background:var(--sema-color-hover-background-secondary)}
+.all.on{background:var(--sema-color-background-inverse);color:var(--sema-color-text-inverse)}
+.all .t{flex:1;font-size:16px;font-weight:700}
+.all .n{font-size:14px;font-weight:700}
+.all .ico{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:var(--sema-color-background-secondary);color:var(--sema-color-text-default)}
+.all.on .ico{background:var(--base-color-amber-500);color:var(--base-color-plum-900)}
+.themes{display:flex;flex-direction:column;gap:2px}
+.th{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:12px;width:100%;padding:9px 12px 9px 16px;border-radius:var(--radius-standard);font-size:14px;font-weight:500;transition:background 120ms}
+.th:hover{background:var(--sema-color-background-secondary)}
+.th.on{background:var(--sema-color-background-secondary);font-weight:700}
+.th .sw{width:8px;height:8px;border-radius:50%;background:var(--sema-color-border-default)}
+.th.on .sw{background:var(--base-color-amber-500)}
+.th .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.th .n{font-size:12px;color:var(--sema-color-text-subtle)}
+.bottom{margin-top:auto;display:flex;flex-direction:column;gap:20px}
+.cloud{display:flex;flex-wrap:wrap;gap:6px}
+.resizer{flex:none;width:12px;margin:0 -6px;position:relative;z-index:3;cursor:col-resize;display:grid;place-items:center;touch-action:none}
+.resizer::before{content:"";position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--sema-color-border-subtle);transition:background 120ms}
+.resizer .grip{position:relative;width:8px;height:44px;border-radius:8px;background:var(--sema-color-background-card);border:1px solid var(--sema-color-border-subtle);box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;transition:all 120ms}
+.resizer .grip i{width:2px;height:2px;border-radius:50%;background:var(--sema-color-text-disabled)}
+.resizer:hover::before,.resizer.drag::before{background:var(--base-color-amber-500)}
+.resizer:hover .grip,.resizer.drag .grip{border-color:var(--base-color-amber-500)}
+.main{flex:1;overflow-y:auto;min-width:0;display:flex;flex-direction:column;transition:padding-right 300ms cubic-bezier(.16,1,.3,1)}
+.main.open{padding-right:480px}
+.wrap{flex:1;width:100%;max-width:1200px;margin:0 auto;padding:80px 48px 0;box-sizing:border-box;display:flex;flex-direction:column}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--sema-color-text-subtle);margin:0 0 10px}
+.h-title{font-size:var(--font-size-title);font-weight:700;letter-spacing:var(--letter-spacing-heading);line-height:var(--line-height-heading);margin:0;text-wrap:pretty}
+.tl{position:relative;flex:1;margin-top:64px;padding:16px 0 100px;display:flex;flex-direction:column;gap:56px}
+.tl::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--sema-color-border-subtle)}
+.row{display:grid;grid-template-columns:minmax(0,1fr) 56px minmax(0,1fr);align-items:start}
+.row .dot{grid-column:2;grid-row:1;justify-self:center;margin-top:30px;width:14px;height:14px;border-radius:50%;background:var(--sema-color-background-page);border:2px solid var(--base-color-amber-500);box-sizing:border-box;transition:all 180ms;z-index:1}
+.row.sel .dot{background:var(--base-color-amber-500);width:18px;height:18px;margin-top:28px}
+.row .when{grid-row:1;padding:20px 28px 0}
+.row .year{font-size:var(--font-size-title);font-weight:700;letter-spacing:var(--letter-spacing-heading);line-height:1;color:var(--sema-color-text-accent-large)}
+.row .md{font-size:14px;font-weight:700;color:var(--sema-color-text-subtle);margin-top:6px}
+.row.l .card{grid-column:1;grid-row:1}.row.l .when{grid-column:3}
+.row.r .card{grid-column:3;grid-row:1}.row.r .when{grid-column:1;text-align:right}
+.card{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;border-radius:var(--radius-comfortable);background:var(--sema-color-background-card);outline:3px solid transparent;overflow:hidden;transition:background 120ms,outline-color 120ms}
+.card:hover{background:var(--sema-color-background-secondary)}
+.card:focus-visible{box-shadow:var(--focus-ring)}
+.row.sel .card{outline-color:var(--base-color-amber-500)}
+.card .txt{display:grid;gap:12px;padding:28px}
+.card h3{margin:0;font-size:22px;font-weight:700;letter-spacing:-.6px;line-height:1.25}
+.card p{margin:0;font-size:var(--font-size-body);line-height:var(--line-height-body);color:var(--sema-color-text-subtle);text-wrap:pretty}
+.media{position:relative;aspect-ratio:16/10;background:var(--sema-color-background-secondary);overflow:hidden}
+.media img{width:100%;height:100%;object-fit:cover;display:block}
+.media .fb{position:absolute;inset:0;display:grid;place-items:center;color:var(--sema-color-text-disabled)}
+.play{position:absolute;left:16px;bottom:16px;display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:999px;background:var(--base-color-wash-warm);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);font-size:12px;font-weight:700;color:#fff}
+.play b{width:28px;height:28px;border-radius:50%;background:#fff;display:grid;place-items:center}
+.play b::after{content:"";margin-left:3px;border-left:9px solid #211922;border-top:6px solid transparent;border-bottom:6px solid transparent}
+.media .scrim{position:absolute;inset:0;background:linear-gradient(transparent 55%,var(--sema-color-scrim-bottom))}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.hash{font-size:12px;font-weight:700;color:var(--sema-color-text-subtle)}
+.empty{padding:80px 0;text-align:center;color:var(--sema-color-text-subtle);position:relative;background:var(--sema-color-background-page)}
+.panel{position:fixed;top:0;right:0;bottom:0;width:480px;box-sizing:border-box;background:var(--sema-color-background-card);box-shadow:var(--elevation-modal);transform:translateX(100%);transition:transform 300ms cubic-bezier(.16,1,.3,1);overflow-y:auto;z-index:5}
+.panel.open{transform:none}
+.panel-in{padding:24px 40px 48px}
+.panel-top{display:flex;justify-content:flex-end;margin-bottom:16px}
+.panel h2{font-size:var(--font-size-heading);font-weight:700;letter-spacing:var(--letter-spacing-heading);line-height:var(--line-height-heading);margin:12px 0 6px;text-wrap:pretty}
+.panel .date{font-size:14px;font-weight:700;color:var(--sema-color-text-subtle)}
+.panel .pm{margin:28px 0;border-radius:var(--radius-comfortable);overflow:hidden;background:var(--sema-color-background-secondary)}
+.panel .pm img{width:100%;display:block}
+.panel .pm iframe{width:100%;aspect-ratio:16/9;border:0;display:block}
+.panel .cap{font-size:12px;color:var(--sema-color-text-subtle);margin:-18px 0 28px}
+.panel .body{font-size:var(--font-size-body);line-height:1.65;margin:0 0 28px;text-wrap:pretty}
+.sec{border-top:1px solid var(--sema-color-border-subtle);padding-top:20px;margin-top:28px}
+.nav{display:flex;justify-content:space-between;gap:12px}
+@media (max-width:1100px){.main.open{padding-right:0}}
+@media (max-width:760px){.lnb,.resizer{display:none}.panel{width:100%}.tl::before{left:24px}.row{grid-template-columns:48px minmax(0,1fr)}.row .dot{grid-column:1}.row.l .card,.row.r .card{grid-column:2;grid-row:2}.row.l .when,.row.r .when{grid-column:2;grid-row:1;text-align:left;padding:0 0 12px}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="_ds/yoin-8d1d8a4b-f467-441d-b0d7-7809cf6add65/_ds_bundle.js"></script>
+<script type="text/babel">
+const { IconButton, Input, Badge, Button, Tag } = window.WayfareDesignSystem_8d1d8a;
+const { useState, useMemo, useEffect, useRef } = React;
+
+const Glyph = ({ name, size = 16, color = 'currentColor' }) => (
+  <span aria-hidden="true" style={{ display: 'inline-block', width: size, height: size, flex: 'none', background: color,
+    WebkitMask: `center/${size}px no-repeat url(icons/${name}.svg)`, mask: `center/${size}px no-repeat url(icons/${name}.svg)` }}></span>
+);
+
+const THEMES = { web: '웹의 역사', space: '우주 탐사의 역사' };
+const WM = 'https://upload.wikimedia.org/wikipedia/commons/';
+const EVENTS = [
+  { id: 'sputnik', theme: 'space', date: '1957-10-04', title: '스푸트니크 1호 발사', tags: ['우주', '스푸트니크', '인공위성', '소련'],
+    summary: '최초의 인공위성 스푸트니크 1호가 지구 궤도에 진입하며 우주 시대가 시작됐습니다.',
+    body: '최초의 인공위성 스푸트니크 1호가 지구 궤도에 진입하며 우주 시대가 시작됐습니다. 지름 58cm의 금속 구체는 약 96분마다 지구를 한 바퀴 돌며 3주 동안 무선 신호를 보냈습니다.',
+    media: { type: 'image', src: WM + 'b/be/Sputnik_asm.jpg', caption: '스푸트니크 1호 복제품 · NASA' }, source: 'https://ko.wikipedia.org/wiki/스푸트니크_1호' },
+  { id: 'apollo', theme: 'space', date: '1969-07-20', title: '아폴로 11호 달 착륙', tags: ['우주', '아폴로', '달', 'NASA'],
+    summary: '닐 암스트롱과 버즈 올드린이 인류 최초로 달 표면에 발을 디뎠습니다.',
+    body: '아폴로 11호의 달 착륙선 이글이 고요의 바다에 착륙했습니다. 닐 암스트롱과 버즈 올드린은 약 2시간 반 동안 달 표면에서 활동하며 21.5kg의 시료를 채취했습니다.',
+    media: { type: 'youtube', id: 'FlpstXNjImY', caption: '달 착륙 원본 영상 · NASA' }, source: 'https://ko.wikipedia.org/wiki/아폴로_11호' },
+  { id: 'www', theme: 'web', date: '1989-03-12', title: '월드 와이드 웹 제안', tags: ['웹', 'CERN', '하이퍼텍스트', '팀버너스리'],
+    summary: '팀 버너스리가 CERN에 하이퍼텍스트 기반 정보 관리 시스템을 제안했습니다.',
+    body: '팀 버너스리가 CERN에 「Information Management: A Proposal」 문서를 제출했습니다. 연구소 안의 흩어진 문서를 하이퍼텍스트로 연결하자는 이 제안이 월드 와이드 웹의 출발점이 됐습니다.',
+    source: 'https://ko.wikipedia.org/wiki/월드_와이드_웹' },
+  { id: 'hubble', theme: 'space', date: '1990-04-24', title: '허블 우주 망원경 발사', tags: ['우주', '허블', '망원경', 'NASA'],
+    summary: '디스커버리호가 허블 우주 망원경을 싣고 발사돼 지구 저궤도에 배치했습니다.',
+    body: '우주왕복선 디스커버리호가 허블 우주 망원경을 싣고 발사됐습니다. 대기의 간섭 없이 우주를 관측하는 허블은 이후 30년 넘게 150만 건 이상의 관측을 남겼습니다.',
+    media: { type: 'image', src: WM + '3/3f/HST-SM4.jpeg', caption: '궤도 위의 허블 우주 망원경 · NASA' }, source: 'https://ko.wikipedia.org/wiki/허블_우주_망원경' },
+  { id: 'site', theme: 'web', date: '1991-08-06', title: '최초의 웹사이트 공개', tags: ['웹', 'CERN', '웹사이트'],
+    summary: 'info.cern.ch가 외부에 공개되며 누구나 웹에 접속할 수 있게 됐습니다.',
+    body: 'info.cern.ch가 외부에 공개됐습니다. 웹이 무엇인지, 브라우저를 어떻게 구하고 서버를 어떻게 세우는지 설명하는 페이지였습니다. 서버는 CERN의 NeXT 컴퓨터에서 동작했습니다.',
+    media: { type: 'image', src: WM + 'd/d1/First_Web_Server.jpg', caption: '최초의 웹 서버로 쓰인 NeXT 컴퓨터 · CERN' }, source: 'https://info.cern.ch' },
+];
+
+function Media({ m, big }) {
+  const [err, setErr] = useState(false);
+  if (!m) return null;
+  const src = m.type === 'youtube' ? `https://img.youtube.com/vi/${m.id}/hqdefault.jpg` : m.src;
+  return (
+    <div className="media">
+      {!err && <img src={src} alt={m.caption || ''} loading="lazy" onError={() => setErr(true)} />}
+      {err && <div className="fb"><Glyph name="image" size={28} /></div>}
+      {m.type === 'youtube' && <><div className="scrim"></div><div className="play"><b></b>YouTube</div></>}
+    </div>
+  );
+}
+
+function Resizer({ width, setWidth }) {
+  const [drag, setDrag] = useState(false);
+  const down = e => {
+    e.preventDefault(); setDrag(true);
+    const x0 = e.clientX, w0 = width;
+    const move = ev => setWidth(Math.max(240, Math.min(520, w0 + ev.clientX - x0)));
+    const up = () => { setDrag(false); removeEventListener('pointermove', move); removeEventListener('pointerup', up); document.body.style.cursor = ''; };
+    document.body.style.cursor = 'col-resize';
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  };
+  const key = e => { if (e.key === 'ArrowLeft') setWidth(w => Math.max(240, w - 16)); if (e.key === 'ArrowRight') setWidth(w => Math.min(520, w + 16)); };
+  return (
+    <div className={'resizer' + (drag ? ' drag' : '')} role="separator" aria-orientation="vertical" aria-label="사이드바 크기 조절" tabIndex={0} onPointerDown={down} onKeyDown={key} onDoubleClick={() => setWidth(300)}>
+      <div className="grip"><i></i><i></i><i></i></div>
+    </div>
+  );
+}
+
+function App() {
+  const [theme, setTheme] = useState('all');
+  const [q, setQ] = useState('');
+  const [tag, setTag] = useState(null);
+  const [selId, setSelId] = useState(null);
+  const [dark, setDark] = useState(() => localStorage.getItem('chrono-theme') === 'dark');
+  const [lnbW, setLnbW] = useState(() => +localStorage.getItem('chrono-lnb') || 300);
+  useEffect(() => { localStorage.setItem('chrono-lnb', lnbW); }, [lnbW]);
+  useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; localStorage.setItem('chrono-theme', dark ? 'dark' : 'light'); }, [dark]);
+  useEffect(() => { const k = e => e.key === 'Escape' && setSelId(null); addEventListener('keydown', k); return () => removeEventListener('keydown', k); }, []);
+
+  const inTheme = EVENTS.filter(e => theme === 'all' || e.theme === theme);
+  const cloud = useMemo(() => {
+    const c = {}; inTheme.forEach(e => e.tags.forEach(t => c[t] = (c[t] || 0) + 1));
+    return Object.entries(c).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [theme]);
+  const list = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return inTheme.filter(e => (!tag || e.tags.includes(tag)) && (!s || [e.title, e.body, e.date, ...e.tags].some(t => t.toLowerCase().includes(s))))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [theme, q, tag]);
+  const idx = list.findIndex(e => e.id === selId);
+  const sel = idx >= 0 ? list[idx] : null;
+  const pick = v => { setTheme(v); setSelId(null); setTag(null); };
+  const heading = theme === 'all' ? '전체 타임라인' : THEMES[theme];
+  const md = d => { const [, m, dd] = d.split('-'); return `${+m}월 ${+dd}일`; };
+
+  return (
+    <div className="app">
+      <nav className="lnb" style={{ width: lnbW }}>
+        <div className="lnb-head">
+          <div className="wordmark">Timeline</div>
+          <IconButton label={dark ? '라이트 모드' : '다크 모드'} size="sm" variant="circle" icon={<Glyph name={dark ? 'sun' : 'moon'} size={18} />} onClick={() => setDark(!dark)} />
+        </div>
+        <button className={'all' + (theme === 'all' ? ' on' : '')} onClick={() => pick('all')}>
+          <span className="ico"><Glyph name="grid-2x2" size={16} /></span>
+          <span className="t">전체</span><span className="n">{EVENTS.length}</span>
+        </button>
+        <div>
+          <div className="lbl">테마</div>
+          <div className="themes">
+            {Object.entries(THEMES).map(([v, label]) => (
+              <button key={v} className={'th' + (theme === v ? ' on' : '')} onClick={() => pick(v)}>
+                <span className="sw"></span><span className="t">{label}</span><span className="n">{EVENTS.filter(e => e.theme === v).length}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="bottom">
+          <div>
+            <div className="lbl">태그</div>
+            <div className="cloud">
+              {cloud.map(([t, n]) => <Tag key={t} selected={tag === t} onClick={() => { setTag(tag === t ? null : t); setSelId(null); }}>#{t}{n > 1 ? ` ${n}` : ''}</Tag>)}
+            </div>
+          </div>
+          <Input placeholder="제목, 내용, 날짜" value={q} onChange={e => setQ(e.target.value)} iconStart={<Glyph name="search" />} fullWidth />
+        </div>
+      </nav>
+      <Resizer width={lnbW} setWidth={setLnbW} />
+      <main className={'main' + (sel ? ' open' : '')}>
+        <div className="wrap">
+          <p className="eyebrow">{list.length}개 이벤트{tag && ` · #${tag}`}{q && ` · “${q}” 검색 결과`}</p>
+          <h1 className="h-title">{heading}</h1>
+          <div className="tl">
+            {list.length === 0 && <div className="empty">다른 검색어를 입력해 보세요</div>}
+            {list.map((e, i) => (
+              <div key={e.id} className={`row ${i % 2 ? 'r' : 'l'}${e.id === selId ? ' sel' : ''}`}>
+                <div className="when"><div className="year">{e.date.slice(0, 4)}</div><div className="md">{md(e.date)}</div></div>
+                <span className="dot"></span>
+                <button className="card" onClick={() => setSelId(e.id === selId ? null : e.id)}>
+                  <Media m={e.media} />
+                  <div className="txt">
+                    {theme === 'all' && <div><Badge tone="wash">{THEMES[e.theme]}</Badge></div>}
+                    <h3>{e.title}</h3>
+                    <p>{e.summary}</p>
+                    <div className="chips">{e.tags.slice(0, 3).map(t => <span key={t} className="hash">#{t}</span>)}</div>
+                  </div>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+      <aside className={'panel' + (sel ? ' open' : '')} aria-hidden={!sel}>
+        {sel && <div className="panel-in" key={sel.id}>
+          <div className="panel-top"><IconButton label="닫기" size="sm" icon={<Glyph name="x" size={18} />} onClick={() => setSelId(null)} /></div>
+          <Badge tone="accent" style={{ color: 'var(--base-color-white)' }}>{THEMES[sel.theme]}</Badge>
+          <h2>{sel.title}</h2>
+          <div className="date">{sel.date.slice(0, 4)}년 {md(sel.date)}</div>
+          {sel.media && <>
+            <div className="pm">
+              {sel.media.type === 'youtube'
+                ? <iframe src={`https://www.youtube.com/embed/${sel.media.id}`} title={sel.title} allow="accelerometer; encrypted-media; picture-in-picture" allowFullScreen></iframe>
+                : <img src={sel.media.src} alt={sel.media.caption} />}
+            </div>
+            {sel.media.caption && <div className="cap">{sel.media.caption}</div>}
+          </>}
+          {!sel.media && <div style={{ height: 28 }}></div>}
+          <p className="body">{sel.body}</p>
+          <Button variant="secondary" size="sm" iconEnd={<Glyph name="arrow-right" />} onClick={() => open(sel.source, '_blank')}>출처 보기</Button>
+          <div className="sec">
+            <div className="lbl" style={{ paddingLeft: 0 }}>태그</div>
+            <div className="cloud">{sel.tags.map(t => <Tag key={t} selected={tag === t} onClick={() => { setTag(t); setSelId(null); }}>#{t}</Tag>)}</div>
+          </div>
+          <div className="sec nav">
+            <Button variant="ghost" size="sm" disabled={idx <= 0} onClick={() => setSelId(list[idx - 1].id)}>이전</Button>
+            <Button variant="ghost" size="sm" disabled={idx >= list.length - 1} onClick={() => setSelId(list[idx + 1].id)}>다음</Button>
+          </div>
+        </div>}
+      </aside>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('app')).render(<App />);
+</script>
+</body>
+</html>

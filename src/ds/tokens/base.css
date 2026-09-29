@@ -1,0 +1,6 @@
+*{box-sizing:border-box}
+body{margin:0;font:var(--text-body);color:var(--sema-color-text-default);background:var(--sema-color-background-page);-webkit-font-smoothing:antialiased}
+a{color:var(--sema-color-text-link);text-decoration:none}
+a:hover{color:var(--base-color-blue-focus);text-decoration:underline}
+button{font-family:var(--font-family-core)}
+::selection{background:var(--base-color-amber-500);color:#fff}

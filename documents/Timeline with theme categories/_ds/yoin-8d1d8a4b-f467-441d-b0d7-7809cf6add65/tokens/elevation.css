@@ -1,0 +1,9 @@
+:root{
+/* Flat by design. Depth comes from warm surface colour + generous rounding. */
+--elevation-flat:none;
+--elevation-subtle:0 1px 3px rgba(33,25,34,.08);
+--elevation-overlay:0 4px 16px rgba(33,25,34,.12);
+--elevation-modal:0 12px 40px rgba(33,25,34,.18);
+--focus-ring:0 0 0 2px var(--base-color-white),0 0 0 4px var(--sema-color-border-focus-outer-default);
+--border-photo-frame:8px solid var(--base-color-white);
+}
