@@ -14,10 +14,10 @@ Node.js 22 이상이 필요합니다.
 npm install
 npm run build
 npm start      # API·미디어 서버 :3000 (저장소: .store/)
-npm run dev    # Vite :5173, /chrono/api 요청은 :3000으로 프록시
+npm run dev    # Vite :5173, /api 요청은 :3000으로 프록시
 ```
 
-<http://localhost:5173/chrono/>에서 확인합니다. 로컬 데이터는 `npm run import`로 `import/`의 내용을 `.store/`에 넣습니다(원본이 삭제되니 주의하세요).
+<http://localhost:5173/>에서 확인합니다. 로컬 데이터는 `npm run import`로 `import/`의 내용을 `.store/`에 넣습니다(원본이 삭제되니 주의하세요).
 
 프로덕션 서버를 로컬에서 확인하려면 먼저 빌드합니다.
 
@@ -26,7 +26,7 @@ npm run build
 npm start
 ```
 
-이때 주소는 <http://localhost:3000/chrono/>입니다.
+이때 주소는 <http://localhost:3000/>입니다.
 
 ## 데이터 관리
 
@@ -72,10 +72,10 @@ docker compose up -d --build
 
 ## 기존 Nginx 연결
 
-Nginx 컨테이너를 `chrono`와 같은 Docker 네트워크에 연결하고 [`nginx/chrono-proxy.conf.example`](nginx/chrono-proxy.conf.example)의 내용을 기존 `server` 블록에 포함합니다.
+앱은 루트(`/`) 경로를 쓰므로 Chrono 전용 도메인(또는 서브도메인)의 `server` 블록으로 연결합니다. Nginx 컨테이너를 `chrono`와 같은 Docker 네트워크에 연결하고 [`nginx/chrono-proxy.conf.example`](nginx/chrono-proxy.conf.example)을 참고해 `server` 블록을 추가합니다.
 
 ```nginx
-location /chrono/ {
+location / {
     auth_basic "Chrono";                              # 인증 필수 (다른 방식도 가능)
     auth_basic_user_file /etc/nginx/chrono.htpasswd;
     client_max_body_size 10m;                         # 이미지 업로드
@@ -86,7 +86,7 @@ location /chrono/ {
 }
 ```
 
-> **인증은 Nginx가 맡습니다.** 앱에는 자체 인증이 없고, 편집 API(삭제·수정·업로드)가 있으므로 `/chrono/` 전체에 반드시 인증을 걸어야 합니다. 앱은 다른 사이트에서 보낸 쓰기 요청(CSRF)만 거부합니다. 또한 `chrono:3000`은 같은 Docker 네트워크의 다른 컨테이너가 Nginx를 거치지 않고 접근할 수 있으므로, 그 네트워크에는 신뢰하는 컨테이너만 두세요.
+> **인증은 Nginx가 맡습니다.** 앱에는 자체 인증이 없고, 편집 API(삭제·수정·업로드)가 있으므로 사이트 전체(`/`)에 반드시 인증을 걸어야 합니다. 앱은 다른 사이트에서 보낸 쓰기 요청(CSRF)만 거부합니다. 또한 `chrono:3000`은 같은 Docker 네트워크의 다른 컨테이너가 Nginx를 거치지 않고 접근할 수 있으므로, 그 네트워크에는 신뢰하는 컨테이너만 두세요.
 
 Nginx 설정 반영에는 최초 한 번 reload가 필요합니다. 이후 화면 배포는 앱 컨테이너 재빌드, 데이터 변경은 import만으로 처리합니다.
 
@@ -99,9 +99,9 @@ npm audit
 ```
 
 - 상태 확인: `GET /healthz`
-- 웹사이트: `GET /chrono/`
-- 타임라인 데이터: `GET /chrono/api/timeline`
-- 미디어: `GET /chrono/api/media/<sha256>.<ext>`
-- 편집(헤더 `X-Chrono-Edit: 1` 필요): `DELETE /chrono/api/themes/<테마>`, `DELETE|PATCH /chrono/api/themes/<테마>/items/<사건>`, `POST /chrono/api/themes/<테마>/items/<사건>/media`, `DELETE …/media/<순번>`
+- 웹사이트: `GET /`
+- 타임라인 데이터: `GET /api/timeline`
+- 미디어: `GET /api/media/<sha256>.<ext>`
+- 편집(헤더 `X-Chrono-Edit: 1` 필요): `DELETE /api/themes/<테마>`, `DELETE|PATCH /api/themes/<테마>/items/<사건>`, `POST /api/themes/<테마>/items/<사건>/media`, `DELETE …/media/<순번>`
 
 상세 설계는 [`documents/PROJECT_PLAN.md`](documents/PROJECT_PLAN.md), 데이터 저장소 구조를 다룬 [`documents/DATA_STORE_PLAN.md`](documents/DATA_STORE_PLAN.md), 편집 기능을 다룬 [`documents/EDIT_FEATURE_PLAN.md`](documents/EDIT_FEATURE_PLAN.md)를 참고하세요.

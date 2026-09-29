@@ -91,7 +91,7 @@ async function readBody(request, limit) {
   return Buffer.concat(chunks);
 }
 
-const writeRoute = /^\/chrono\/api\/themes\/([^/]+)(?:\/items\/([^/]+)(?:\/media(?:\/(\d+))?)?)?$/;
+const writeRoute = /^\/api\/themes\/([^/]+)(?:\/items\/([^/]+)(?:\/media(?:\/(\d+))?)?)?$/;
 
 // 인증은 앞단 Nginx가 맡는다. 여기서는 다른 사이트가 인증된 브라우저로 보내는 요청(CSRF)만 막는다.
 async function handleWrite(request, response, store, pathname) {
@@ -148,27 +148,22 @@ export function createApp({
       response.end("ok");
       return;
     }
-    if (pathname === "/chrono") {
-      response.writeHead(308, { location: "/chrono/" });
-      response.end();
-      return;
-    }
-    if (pathname.startsWith("/chrono/api/themes/") && ["DELETE", "PATCH", "POST"].includes(request.method || "")) {
+    if (pathname.startsWith("/api/themes/") && ["DELETE", "PATCH", "POST"].includes(request.method || "")) {
       await handleWrite(request, response, store, pathname);
       return;
     }
-    if (!pathname.startsWith("/chrono/") || !["GET", "HEAD"].includes(request.method || "")) {
+    if (!["GET", "HEAD"].includes(request.method || "")) {
       response.writeHead(404).end();
       return;
     }
 
-    if (pathname === "/chrono/api/timeline") {
+    if (pathname === "/api/timeline") {
       sendTimeline(request, response, store);
       return;
     }
-    if (pathname.startsWith("/chrono/api/")) {
-      const name = pathname.slice("/chrono/api/media/".length);
-      if (pathname.startsWith("/chrono/api/media/") && mediaNamePattern.test(name)) {
+    if (pathname.startsWith("/api/")) {
+      const name = pathname.slice("/api/media/".length);
+      if (pathname.startsWith("/api/media/") && mediaNamePattern.test(name)) {
         await sendFile(request, response, join(store.mediaDir, name), "public, max-age=31536000, immutable");
       } else response.writeHead(404).end();
       return;
@@ -176,7 +171,7 @@ export function createApp({
 
     let filePath;
     try {
-      filePath = safePath(distDir, decodeURIComponent(pathname.slice("/chrono/".length)) || "index.html");
+      filePath = safePath(distDir, decodeURIComponent(pathname.slice(1)) || "index.html");
     } catch {
       response.writeHead(400).end();
       return;
@@ -185,7 +180,7 @@ export function createApp({
       response.writeHead(404).end();
       return;
     }
-    await sendFile(request, response, filePath, pathname.startsWith("/chrono/assets/") ? "public, max-age=31536000, immutable" : "no-cache");
+    await sendFile(request, response, filePath, pathname.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache");
   });
 }
 

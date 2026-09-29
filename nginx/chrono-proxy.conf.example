@@ -1,21 +1,22 @@
-# 기존 Nginx server 블록 안에 포함합니다.
+# 앱이 루트(/) 경로를 쓰므로 Chrono 전용 server 블록(도메인 또는 서브도메인)으로 구성합니다.
 # 앱에는 자체 인증이 없습니다. 편집(삭제·수정) API가 있으므로 반드시 Nginx에서 인증을 걸어 주세요.
-location = /chrono {
-    return 308 /chrono/;
-}
+server {
+    listen 80;
+    server_name chrono.example.com;   # 실제 도메인으로 변경 (TLS 설정은 운영 환경에 맞게 추가)
 
-location /chrono/ {
-    # 인증 예시 (Basic Auth). 다른 방식(auth_request, OAuth 프록시 등)을 써도 됩니다.
-    # htpasswd 파일 생성: htpasswd -c /etc/nginx/chrono.htpasswd <사용자>
-    auth_basic "Chrono";
-    auth_basic_user_file /etc/nginx/chrono.htpasswd;
+    location / {
+        # 인증 예시 (Basic Auth). 다른 방식(auth_request, OAuth 프록시 등)을 써도 됩니다.
+        # htpasswd 파일 생성: htpasswd -c /etc/nginx/chrono.htpasswd <사용자>
+        auth_basic "Chrono";
+        auth_basic_user_file /etc/nginx/chrono.htpasswd;
 
-    # 편집 화면의 이미지 업로드(최대 10MB). 기본값 1MB로는 대부분의 사진이 413 오류가 납니다.
-    client_max_body_size 10m;
+        # 편집 화면의 이미지 업로드(최대 10MB). 기본값 1MB로는 대부분의 사진이 413 오류가 납니다.
+        client_max_body_size 10m;
 
-    proxy_pass http://chrono:3000;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://chrono:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 }
