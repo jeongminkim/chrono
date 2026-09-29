@@ -224,6 +224,145 @@ function MediaAdder({ onAdd }: { onAdd: (file: File) => void }) {
   );
 }
 
+// ---- 모바일 (760px 이하) — Claude Design "Timeline Mobile.html". 편집 기능은 제공하지 않는다. ----
+
+const mobileQuery = "(max-width: 760px)";
+function useMobile() {
+  const [mobile, setMobile] = useState(() => window.matchMedia(mobileQuery).matches);
+  useEffect(() => {
+    const query = window.matchMedia(mobileQuery);
+    const onChange = () => setMobile(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  return mobile;
+}
+
+// 가로 스크롤 목록. 마우스는 끌어서 스크롤하고, 끝이 잘린 쪽은 흐리게 표시한다.
+function DragScroll({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [edge, setEdge] = useState({ l: false, r: false });
+  const [dragging, setDragging] = useState(false);
+  const moved = useRef(false);
+  const edgeRef = useRef({ l: false, r: false });
+  const update = () => {
+    const el = ref.current;
+    if (!el) return;
+    const l = el.scrollLeft > 2, r = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+    if (edgeRef.current.l === l && edgeRef.current.r === r) return;
+    edgeRef.current = { l, r };
+    setEdge({ l, r });
+  };
+  useEffect(() => {
+    const observer = new ResizeObserver(update);
+    observer.observe(ref.current!);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(update);
+  const down = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "mouse") return;
+    const el = ref.current!, x0 = event.clientX, s0 = el.scrollLeft;
+    moved.current = false;
+    const move = (ev: PointerEvent) => {
+      const dx = ev.clientX - x0;
+      if (Math.abs(dx) > 4) { moved.current = true; setDragging(true); }
+      el.scrollLeft = s0 - dx;
+    };
+    const up = () => { setDragging(false); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  return (
+    <div ref={ref} className={`m-scroller${dragging ? " dragging" : ""}${edge.l ? " fl" : ""}${edge.r ? " fr" : ""}`}
+      onPointerDown={down} onScroll={update}
+      onClickCapture={(e) => { if (moved.current) { e.stopPropagation(); e.preventDefault(); moved.current = false; } }}
+      onWheel={(e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) ref.current!.scrollLeft += e.deltaY; }}>
+      {children}
+    </div>
+  );
+}
+
+type Entry = TimelineItem & { key: string; themeName: string };
+
+function MobileView({ data, message, themes, theme, pick, total, q, setQ, tag, setTag, cloud, list, sel, idx, setSelKey, dark, setDark, heading }: {
+  data?: TimelineData; message: string; themes: TimelineData["themes"]; theme: string; pick: (id: string) => void; total: number;
+  q: string; setQ: (q: string) => void; tag: string | null; setTag: (tag: string | null) => void; cloud: [string, number][];
+  list: Entry[]; sel: Entry | null; idx: number; setSelKey: (key: string | null) => void; dark: boolean; setDark: (dark: boolean) => void; heading: string;
+}) {
+  const [searchOpen, setSearchOpen] = useState(false);
+  return (
+    <>
+      <div className="m">
+        <div className="m-head">
+          <div className="m-word">Timeline</div>
+          <IconButton label="검색" size="md" variant={searchOpen ? "circle" : "ghost"} icon={<Glyph name="search" size={20} />} onClick={() => setSearchOpen(!searchOpen)} />
+          <IconButton label={dark ? "라이트 모드" : "다크 모드"} size="md" variant="circle" icon={<Glyph name={dark ? "sun" : "moon"} size={20} />} onClick={() => setDark(!dark)} />
+        </div>
+        {searchOpen && <div className="m-search"><Input placeholder="제목, 내용, 날짜" aria-label="타임라인 검색" value={q} onChange={(event: { target: { value: string } }) => setQ(event.target.value)} iconStart={<Glyph name="search" />} fullWidth autoFocus /></div>}
+        <DragScroll>
+          <button className={`m-seg all${theme === "all" ? " on" : ""}`} onClick={() => pick("all")}>
+            <span className="ico"><Glyph name="grid-2x2" size={14} /></span>전체<span className="n">{total}</span>
+          </button>
+          {themes.map((t) => (
+            <button key={t.id} className={`m-seg${theme === t.id ? " on" : ""}`} onClick={() => pick(t.id)}>{t.name}<span className="n">{t.items.length}</span></button>
+          ))}
+        </DragScroll>
+        <div className="m-tags">
+          <div className="m-lbl">태그</div>
+          <DragScroll>
+            {cloud.map(([t, n]) => <Tag key={t} selected={tag === t} onClick={() => setTag(tag === t ? null : t)}>#{t}{n > 1 ? ` ${n}` : ""}</Tag>)}
+          </DragScroll>
+        </div>
+        <div className="m-title">
+          {message && <p className={`notice ${data ? "warning" : "error"}`} role="alert">{message}</p>}
+          {!data && !message && <p className="notice" role="status">타임라인을 불러오는 중입니다.</p>}
+          <p className="m-eyebrow">{list.length}개 이벤트{tag && ` · #${tag}`}{q && ` · “${q}”`}</p>
+          <h1 className="m-h-title">{heading}</h1>
+        </div>
+        <div className="m-tl">
+          {data && list.length === 0 && <div className="m-empty">{themes.length === 0 ? "아직 데이터가 없습니다" : "다른 검색어를 입력해 보세요"}</div>}
+          {list.map((e) => (
+            <div key={e.key} className={`m-it${e.key === sel?.key ? " sel" : ""}`}>
+              <span className="m-dot" />
+              <div className="m-when"><span className="m-year">{e.date.slice(0, 4)}</span><span className="m-md">{monthDay(e.date)}</span></div>
+              <button className="m-card" onClick={() => setSelKey(e.key)}>
+                {e.media && <Media m={e.media[0]} title={e.title} />}
+                <div className="txt">
+                  {theme === "all" && <div><Badge tone="wash">{e.themeName}</Badge></div>}
+                  <h3>{e.title}</h3>
+                  <p>{e.description}</p>
+                  <div className="m-chips">{e.tags.slice(0, 3).map((t) => <span key={t} className="hash">#{t}</span>)}</div>
+                </div>
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className={`m-scrimbg${sel ? " open" : ""}`} onClick={() => setSelKey(null)} />
+      <div className={`m-sheet${sel ? " open" : ""}`} aria-hidden={!sel} role="dialog" aria-label={sel?.title}>
+        <div className="m-grab" />
+        <div className="m-sheet-top"><IconButton label="닫기" size="md" icon={<Glyph name="x" size={20} />} onClick={() => setSelKey(null)} /></div>
+        {sel && <div className="m-sheet-in" key={sel.key}>
+          <Badge tone="accent" style={{ color: "var(--base-color-white)" }}>{sel.themeName}</Badge>
+          <h2>{sel.title}</h2>
+          <div className="date">{sel.date.slice(0, 4)}년 {monthDay(sel.date)}</div>
+          {sel.media ? sel.media.map((m) => <MediaDetail key={m.src} m={m} title={sel.title} />) : <div style={{ height: 24 }} />}
+          <p className="body">{sel.body ?? sel.description}</p>
+          {sel.sourceUrl && <Button variant="secondary" size="md" fullWidth iconEnd={<Glyph name="arrow-right" />} onClick={() => window.open(sel.sourceUrl, "_blank", "noopener,noreferrer")}>출처 보기</Button>}
+          {sel.tags.length > 0 && <div className="m-sec">
+            <div className="m-lbl">태그</div>
+            <div className="m-chips">{sel.tags.map((t) => <Tag key={t} selected={tag === t} onClick={() => { setTag(t); setSelKey(null); }}>#{t}</Tag>)}</div>
+          </div>}
+          <div className="m-sec m-nav">
+            <Button variant="secondary" size="md" fullWidth disabled={idx <= 0} onClick={() => setSelKey(list[idx - 1].key)}>이전</Button>
+            <Button variant="secondary" size="md" fullWidth disabled={idx >= list.length - 1} onClick={() => setSelKey(list[idx + 1].key)}>다음</Button>
+          </div>
+        </div>}
+      </div>
+    </>
+  );
+}
+
 export default function App() {
   const [data, setData] = useState<TimelineData>();
   const [message, setMessage] = useState("");
@@ -233,6 +372,7 @@ export default function App() {
   const [selKey, setSelKey] = useState<string | null>(null);
   const [dark, setDark] = useState(() => localStorage.getItem("chrono-theme") === "dark");
   const [edit, setEdit] = useState(false);
+  const mobile = useMobile();
   const [lnbW, setLnbW] = useState(() => Number(localStorage.getItem("chrono-lnb")) || defaultSidebarWidth);
 
   useEffect(() => localStorage.setItem("chrono-lnb", String(lnbW)), [lnbW]);
@@ -311,6 +451,12 @@ export default function App() {
     if (file.size > 10 * 1024 * 1024) return setMessage("저장하지 못했습니다: 이미지가 10MB를 넘습니다.");
     void mutate(() => api("POST", `${itemPath(key)}/media`, file, file.type || "application/octet-stream"));
   };
+
+  if (mobile) {
+    return <MobileView data={data} message={message} themes={themes} theme={theme} pick={pick} total={total} q={q} setQ={setQ}
+      tag={tag} setTag={(t) => { setTag(t); setSelKey(null); }} cloud={cloud} list={list} sel={sel} idx={idx} setSelKey={setSelKey}
+      dark={dark} setDark={setDark} heading={heading} />;
+  }
 
   return (
     <div className="app">
