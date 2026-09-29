@@ -6,4 +6,5 @@ export const Badge: DsComponent;
 export const Button: DsComponent;
 export const IconButton: DsComponent;
 export const Input: DsComponent;
+export const Switch: DsComponent;
 export const Tag: DsComponent;

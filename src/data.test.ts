@@ -23,11 +23,11 @@ describe("parseTimelineData", () => {
   it("이미지와 동영상 media를 검증한다", () => {
     const withMedia = (media: unknown) => parseTimelineData(fixture([{ id: "a", date: "2020", title: "t", description: "d", media }])).themes[0].items[0].media;
 
-    assert.deepEqual(withMedia({ type: "image", src: "images/a.webp", alt: "설명" }), { type: "image", src: "images/a.webp", alt: "설명" });
-    assert.equal(withMedia({ type: "image", src: "https://example.com/a.jpg", alt: "설명" })?.src, "https://example.com/a.jpg");
+    assert.deepEqual(withMedia({ type: "image", src: "images/a.webp", alt: "설명" }), [{ type: "image", src: "images/a.webp", alt: "설명" }]);
+    assert.equal(withMedia({ type: "image", src: "https://example.com/a.jpg", alt: "설명" })?.[0].src, "https://example.com/a.jpg");
     assert.deepEqual(withMedia({ type: "video", src: "https://youtu.be/FlpstXNjImY", caption: "c" }),
-      { type: "video", src: "https://youtu.be/FlpstXNjImY", youtubeId: "FlpstXNjImY", caption: "c" });
-    assert.equal(withMedia({ type: "video", src: "https://example.com/a.mp4", poster: "images/p.jpg" })?.type, "video");
+      [{ type: "video", src: "https://youtu.be/FlpstXNjImY", youtubeId: "FlpstXNjImY", caption: "c" }]);
+    assert.equal(withMedia({ type: "video", src: "https://example.com/a.mp4", poster: "images/p.jpg" })?.[0].type, "video");
 
     assert.throws(() => withMedia({ type: "image", src: "../server.mjs", alt: "x" }), /상대 경로/);
     assert.throws(() => withMedia({ type: "image", src: "/etc/a.png", alt: "x" }), /상대 경로/);
@@ -36,6 +36,19 @@ describe("parseTimelineData", () => {
     assert.throws(() => withMedia({ type: "video", src: "videos/a.mp4" }), /https URL이어야/);
     assert.throws(() => withMedia({ type: "video", src: "https://www.youtube.com/channel/abc" }), /YouTube 동영상 ID/);
     assert.throws(() => withMedia({ type: "audio", src: "a.mp3" }), /"image" 또는 "video"/);
+  });
+
+  it("media는 객체 하나 또는 최대 5개 배열이다", () => {
+    const withMedia = (media: unknown) => parseTimelineData(fixture([{ id: "a", date: "2020", title: "t", description: "d", media }])).themes[0].items[0].media;
+    const image = (n: number) => ({ type: "image", src: `images/${n}.jpg`, alt: `사진 ${n}` });
+
+    assert.deepEqual(withMedia([image(1)]), withMedia(image(1)));
+    assert.deepEqual(withMedia([1, 2, 3, 4, 5].map(image))?.map((m) => m.src), [1, 2, 3, 4, 5].map((n) => `images/${n}.jpg`));
+    assert.equal(withMedia([]), undefined);
+    assert.throws(() => withMedia([1, 2, 3, 4, 5, 6].map(image)), /최대 5개/);
+    assert.throws(() => withMedia("images/1.jpg"), /최대 5개/);
+    assert.throws(() => withMedia([image(1), image(1)]), /media\[1\]\.src가 같은 사건에서 중복/);
+    assert.throws(() => withMedia([image(1), { type: "image", src: "images/2.jpg" }]), /media\[1\]\.alt/);
   });
 
   it("YouTube URL에서 동영상 ID를 찾는다", () => {

@@ -4,7 +4,7 @@
 
 화면 데이터는 컨테이너 볼륨의 SQLite DB와 미디어 디렉터리에 저장됩니다. `import/`에 넣은 `data.json`과 이미지를 import하면 DB로 옮겨지고 원본은 자동 삭제되며, 열린 화면에도 5초 안에 반영됩니다.
 
-초기 화면에는 모든 테마가 표시됩니다. 테마 필터, 날짜·제목·내용 검색 점프와 Light/Dark 모드를 제공합니다.
+초기 화면에는 모든 테마가 표시됩니다. 테마·태그 필터, 날짜·제목·내용 검색과 Light/Dark 모드를 제공합니다. LNB의 **편집 허용** 스위치를 켜면 테마·사건 삭제와 상세 패널에서의 날짜·제목·내용·태그 수정, 이미지 추가·삭제(사건당 최대 5개)를 할 수 있습니다. 모바일 화면(760px 이하)에서는 편집할 수 없습니다.
 
 ## 로컬 개발
 
@@ -36,13 +36,17 @@ npm start
 ```bash
 # 검증만 (아무것도 바꾸지 않음)
 docker compose run --rm chrono node store.mjs import /import --dry-run
-# import (기본: 같은 id 항목은 덮어쓰고 새 항목은 추가)
+# import (기본: 추가 전용. 새 테마·새 항목만 넣고, 이미 있는 항목과 테마 이름은 그대로 둔다)
 docker compose run --rm chrono node store.mjs import /import
-# 파일에 포함된 테마에서, 파일에 없는 항목은 삭제
+# 이미 있는 항목도 파일 내용으로 덮어쓰기 (화면에서 편집한 내용이 사라질 수 있음)
+docker compose run --rm chrono node store.mjs import /import --overwrite
+# --overwrite에 더해, 파일에 포함된 테마에서 파일에 없는 항목은 삭제
 docker compose run --rm chrono node store.mjs import /import --replace
 ```
 
-원본이 삭제되면 DB가 유일한 사본입니다. 데이터를 고칠 때와 백업할 때는 export를 씁니다. export 결과는 그대로 `import/`에 넣어 다시 import할 수 있습니다.
+건너뛴 항목은 결과의 `skipped`, `skippedIds`에 표시됩니다.
+
+원본이 삭제되면 DB가 유일한 사본입니다. 간단한 수정은 화면의 편집 기능을 쓰고, 백업이나 대량 수정에는 export를 씁니다. export 결과를 고친 뒤 `import/`에 넣고 `--overwrite`로 다시 import합니다.
 
 ```bash
 docker compose run --rm -v "$PWD/export:/export" chrono node store.mjs export /export
@@ -72,12 +76,17 @@ Nginx 컨테이너를 `chrono`와 같은 Docker 네트워크에 연결하고 [`n
 
 ```nginx
 location /chrono/ {
+    auth_basic "Chrono";                              # 인증 필수 (다른 방식도 가능)
+    auth_basic_user_file /etc/nginx/chrono.htpasswd;
+    client_max_body_size 10m;                         # 이미지 업로드
     proxy_pass http://chrono:3000;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
+
+> **인증은 Nginx가 맡습니다.** 앱에는 자체 인증이 없고, 편집 API(삭제·수정·업로드)가 있으므로 `/chrono/` 전체에 반드시 인증을 걸어야 합니다. 앱은 다른 사이트에서 보낸 쓰기 요청(CSRF)만 거부합니다. 또한 `chrono:3000`은 같은 Docker 네트워크의 다른 컨테이너가 Nginx를 거치지 않고 접근할 수 있으므로, 그 네트워크에는 신뢰하는 컨테이너만 두세요.
 
 Nginx 설정 반영에는 최초 한 번 reload가 필요합니다. 이후 화면 배포는 앱 컨테이너 재빌드, 데이터 변경은 import만으로 처리합니다.
 
@@ -93,5 +102,6 @@ npm audit
 - 웹사이트: `GET /chrono/`
 - 타임라인 데이터: `GET /chrono/api/timeline`
 - 미디어: `GET /chrono/api/media/<sha256>.<ext>`
+- 편집(헤더 `X-Chrono-Edit: 1` 필요): `DELETE /chrono/api/themes/<테마>`, `DELETE|PATCH /chrono/api/themes/<테마>/items/<사건>`, `POST /chrono/api/themes/<테마>/items/<사건>/media`, `DELETE …/media/<순번>`
 
-상세 설계는 [`documents/PROJECT_PLAN.md`](documents/PROJECT_PLAN.md)와 데이터 저장소 구조를 다룬 [`documents/DATA_STORE_PLAN.md`](documents/DATA_STORE_PLAN.md)를 참고하세요.
+상세 설계는 [`documents/PROJECT_PLAN.md`](documents/PROJECT_PLAN.md), 데이터 저장소 구조를 다룬 [`documents/DATA_STORE_PLAN.md`](documents/DATA_STORE_PLAN.md), 편집 기능을 다룬 [`documents/EDIT_FEATURE_PLAN.md`](documents/EDIT_FEATURE_PLAN.md)를 참고하세요.

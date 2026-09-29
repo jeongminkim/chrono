@@ -1241,4 +1241,4 @@ function Tabs({
 }
 Object.assign(__ds_scope, { Tabs });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/navigation/Tabs.jsx", error: String((e && e.message) || e) }); }
-export const { Badge, Button, IconButton, Input, Tag } = __ds_scope;
+export const { Badge, Button, IconButton, Input, Switch, Tag } = __ds_scope;

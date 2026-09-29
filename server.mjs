@@ -3,7 +3,7 @@ import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { mediaNamePattern, openStore, readTimeline, revision } from "./store.mjs";
+import { addMedia, deleteItem, deleteTheme, mediaNamePattern, openStore, readTimeline, removeMedia, revision, StoreError, updateItem } from "./store.mjs";
 
 const projectDir = fileURLToPath(new URL(".", import.meta.url));
 const mimeTypes = {
@@ -74,6 +74,68 @@ function sendTimeline(request, response, store) {
   response.end(request.method === "HEAD" ? undefined : body);
 }
 
+function sendJson(response, status, value) {
+  const body = JSON.stringify(value);
+  response.writeHead(status, { ...securityHeaders, "cache-control": "no-store", "content-type": mimeTypes[".json"], "content-length": Buffer.byteLength(body) });
+  response.end(body);
+}
+
+async function readBody(request, limit) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > limit) throw new StoreError(413, "요청 본문이 너무 큽니다.");
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+const writeRoute = /^\/chrono\/api\/themes\/([^/]+)(?:\/items\/([^/]+)(?:\/media(?:\/(\d+))?)?)?$/;
+
+// 인증은 앞단 Nginx가 맡는다. 여기서는 다른 사이트가 인증된 브라우저로 보내는 요청(CSRF)만 막는다.
+async function handleWrite(request, response, store, pathname) {
+  const site = request.headers["sec-fetch-site"];
+  if (request.headers["x-chrono-edit"] !== "1" || (site && site !== "same-origin")) {
+    sendJson(response, 403, { error: "허용되지 않은 요청입니다." });
+    return;
+  }
+  const match = writeRoute.exec(pathname);
+  const isMedia = pathname.includes("/media");
+  try {
+    let themeId, itemId, index;
+    try {
+      [themeId, itemId, index] = match ? match.slice(1).map((part) => part && decodeURIComponent(part)) : [];
+    } catch {
+      throw new StoreError(400, "경로가 올바르지 않습니다.");
+    }
+    let item;
+    if (request.method === "DELETE" && match && !itemId) deleteTheme(store, themeId);
+    else if (request.method === "DELETE" && itemId && !isMedia) deleteItem(store, themeId, itemId);
+    else if (request.method === "DELETE" && index !== undefined) item = await removeMedia(store, themeId, itemId, Number(index));
+    else if (request.method === "PATCH" && itemId && !isMedia) {
+      let patch;
+      try {
+        patch = JSON.parse((await readBody(request, 64 * 1024)).toString("utf8"));
+      } catch (error) {
+        throw error instanceof StoreError ? error : new StoreError(400, "JSON 본문이 올바르지 않습니다.");
+      }
+      item = await updateItem(store, themeId, itemId, patch ?? {});
+    } else if (request.method === "POST" && isMedia && index === undefined) {
+      const url = new URL(request.url || "/", "http://localhost");
+      item = await addMedia(store, themeId, itemId, await readBody(request, 10 * 1024 * 1024),
+        { contentType: request.headers["content-type"], alt: url.searchParams.get("alt") ?? "" });
+    } else {
+      sendJson(response, 404, { error: "없는 경로입니다." });
+      return;
+    }
+    sendJson(response, 200, { revision: revision(store), ...(item && { item }) });
+  } catch (error) {
+    if (!(error instanceof StoreError)) console.error(error);
+    sendJson(response, error instanceof StoreError ? error.status : 500, { error: error instanceof StoreError ? error.message : "저장하지 못했습니다." });
+  }
+}
+
 export function createApp({
   distDir = process.env.DIST_DIR || resolve(projectDir, "dist"),
   store = openStore(),
@@ -89,6 +151,10 @@ export function createApp({
     if (pathname === "/chrono") {
       response.writeHead(308, { location: "/chrono/" });
       response.end();
+      return;
+    }
+    if (pathname.startsWith("/chrono/api/themes/") && ["DELETE", "PATCH", "POST"].includes(request.method || "")) {
+      await handleWrite(request, response, store, pathname);
       return;
     }
     if (!pathname.startsWith("/chrono/") || !["GET", "HEAD"].includes(request.method || "")) {

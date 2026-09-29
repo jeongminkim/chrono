@@ -12,14 +12,21 @@
 - `item.title`, `item.description`: HTML이 아닌 일반 텍스트. `description`은 카드 요약
 - `item.body`: 선택 필드. 상세 패널에 표시할 설명이며 생략하면 `description` 사용
 - `item.tags`: 선택 필드. 태그 필터와 검색에 사용하는 문자열 배열
-- `item.media`: 선택 필드. 카드와 상세 패널에 보여줄 이미지 또는 동영상 하나 (아래 참고)
+- `item.media`: 선택 필드. 카드와 상세 패널에 보여줄 이미지·동영상 **최대 5개의 배열** (아래 참고)
 - `item.sourceUrl`: 선택 필드. 사실을 확인할 수 있는 `https` URL
 
 항목은 날짜순으로 작성합니다. 앱도 표시 전에 날짜순으로 다시 정렬합니다.
 
 ## 미디어
 
-`media.type`은 `image` 또는 `video`입니다. 두 형식 모두 선택적으로 `caption`(상세 패널 이미지 아래 설명)을 넣을 수 있습니다.
+`media`는 미디어 객체의 배열입니다.
+
+- 이미지와 동영상을 섞어 **최대 5개**까지 넣을 수 있습니다. 6개 이상이면 import가 거부됩니다.
+- 배열 순서대로 표시되며, **첫 번째 항목이 카드의 대표 이미지**가 됩니다. 상세 패널에는 모두 표시됩니다.
+- 한 사건 안에서 같은 `src`를 두 번 넣을 수 없습니다.
+- 이전 형식처럼 객체 하나만 적어도 됩니다(`"media": { ... }`는 `"media": [{ ... }]`와 같습니다). export는 항상 배열로 출력합니다.
+
+각 객체의 `type`은 `image` 또는 `video`이며, 두 형식 모두 선택적으로 `caption`(상세 패널 미디어 아래 설명)을 넣을 수 있습니다.
 
 ### 이미지
 
@@ -60,12 +67,19 @@ YouTube는 `https://www.youtube.com/watch?v=ID`, `https://youtu.be/ID`, `/embed/
           "description": "검증된 사실을 간결하게 설명합니다.",
           "body": "상세 패널에서 보여줄 설명입니다.",
           "tags": ["샘플", "연표"],
-          "media": {
-            "type": "image",
-            "src": "images/example.webp",
-            "alt": "이미지의 의미를 설명하는 문장",
-            "caption": "이미지 출처 또는 설명"
-          },
+          "media": [
+            {
+              "type": "image",
+              "src": "images/example.webp",
+              "alt": "이미지의 의미를 설명하는 문장",
+              "caption": "이미지 출처 또는 설명"
+            },
+            {
+              "type": "image",
+              "src": "images/example-2.webp",
+              "alt": "두 번째 이미지 설명"
+            }
+          ],
           "sourceUrl": "https://example.com/source"
         },
         {
@@ -73,11 +87,13 @@ YouTube는 `https://www.youtube.com/watch?v=ID`, `https://youtu.be/ID`, `/embed/
           "date": "2026-02-01",
           "title": "동영상이 있는 사건",
           "description": "YouTube 동영상을 함께 보여줍니다.",
-          "media": {
-            "type": "video",
-            "src": "https://www.youtube.com/watch?v=FlpstXNjImY",
-            "caption": "동영상 출처 또는 설명"
-          }
+          "media": [
+            {
+              "type": "video",
+              "src": "https://www.youtube.com/watch?v=FlpstXNjImY",
+              "caption": "동영상 출처 또는 설명"
+            }
+          ]
         }
       ]
     }
@@ -96,11 +112,11 @@ JSON 외의 설명과 Markdown 코드 펜스는 출력하지 마라.
 테마와 항목의 id는 영문 소문자, 숫자, 하이픈만 사용하고 각 범위에서 중복하지 마라.
 date는 YYYY 또는 YYYY-MM-DD 형식으로 쓰고 항목을 날짜 오름차순으로 정렬하라.
 title, description, body에는 HTML을 넣지 마라. 검색에 유용한 핵심어를 tags 문자열 배열로 작성하라.
-이미지나 동영상은 media 필드 하나로 넣는다. 이미지는 {"type":"image","src","alt","caption"?}, 동영상은 {"type":"video","src","poster"?,"caption"?} 형식을 따르라.
+이미지나 동영상은 media 배열에 최대 5개까지 넣는다. 첫 번째 항목이 대표 이미지다. 이미지는 {"type":"image","src","alt","caption"?}, 동영상은 {"type":"video","src","poster"?,"caption"?} 형식을 따르고, 한 사건 안에서 같은 src를 반복하지 마라.
 이미지 src는 data.json 기준 상대 경로(예: images/example.webp) 또는 https URL, 동영상 src는 YouTube URL 또는 https 동영상 파일 URL만 쓴다.
 저작권과 실제 파일 경로·URL이 확인되지 않은 미디어는 media 필드를 생략하라.
 출처가 있다면 https URL만 사용하라.
 출력 전 JSON 문법, 필수 필드, 날짜 형식, ID 중복을 검사하라.
 ```
 
-import 전에 `--dry-run`으로 검증하는 것을 권장합니다. 같은 `theme.id`/`item.id`의 항목은 덮어쓰고 새 항목은 추가합니다. 기존 데이터를 고치려면 export한 `data.json`과 `images/`를 이 디렉터리에 넣고 수정한 뒤 다시 import합니다.
+import 전에 `--dry-run`으로 검증하는 것을 권장합니다. import는 기본적으로 **추가 전용**입니다. 이미 있는 `theme.id`에 새 `item.id`의 항목을 넣으면 그 테마 뒤에 추가되고, 이미 있는 `item.id`의 항목과 테마 이름은 건드리지 않고 건너뜁니다(화면에서 편집한 내용 보호). 기존 항목을 파일 내용으로 바꾸려면 export한 `data.json`과 `images/`를 이 디렉터리에 넣고 수정한 뒤 `--overwrite`로 import합니다.

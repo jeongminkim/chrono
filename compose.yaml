@@ -1,6 +1,7 @@
 services:
   chrono:
     build: .
+    container_name: chrono
     restart: unless-stopped
     volumes:
       - chrono-store:/var/lib/chrono
@@ -9,12 +10,11 @@ services:
     expose:
       - "3000"
     networks:
-      - proxy
+      - websvr
 
 volumes:
   chrono-store:
 
 networks:
-  proxy:
+  websvr:
     external: true
-    name: ${NGINX_NETWORK:-proxy}

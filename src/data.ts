@@ -9,7 +9,7 @@ export interface TimelineItem {
   description: string;
   body?: string;
   tags: string[];
-  media?: TimelineMedia;
+  media?: TimelineMedia[];
   sourceUrl?: string;
 }
 
@@ -42,6 +42,12 @@ export function findTimelineItem(themes: TimelineTheme[], query: string) {
 }
 
 const idPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const maxMediaCount = 5;
+
+// 앞뒤 공백과 빈 값, 중복을 없앤다. 화면의 쉼표 입력과 서버의 태그 수정이 함께 쓴다.
+export function cleanTags(tags: string[]): string[] {
+  return [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))];
+}
 
 function isValidDate(value: string): boolean {
   if (/^\d{4}$/.test(value)) return true;
@@ -104,6 +110,23 @@ function parseMedia(raw: unknown, path: string): TimelineMedia {
   throw new Error(`${path}.type은 "image" 또는 "video"여야 합니다.`);
 }
 
+// 객체 하나(기존 규격) 또는 최대 5개 배열을 받아 항상 배열로 돌려준다. 빈 배열은 필드 생략과 같다.
+function parseMediaList(raw: unknown, path: string): TimelineMedia[] | undefined {
+  const list = Array.isArray(raw) ? raw : [raw];
+  if ((!Array.isArray(raw) && !isRecord(raw)) || list.length > maxMediaCount) {
+    throw new Error(`${path}는 객체 또는 최대 ${maxMediaCount}개의 객체 배열이어야 합니다.`);
+  }
+  const seen = new Set<string>();
+  const media = list.map((entry, index) => {
+    const entryPath = Array.isArray(raw) ? `${path}[${index}]` : path;
+    const parsed = parseMedia(entry, entryPath);
+    if (seen.has(parsed.src)) throw new Error(`${entryPath}.src가 같은 사건에서 중복됩니다.`);
+    seen.add(parsed.src);
+    return parsed;
+  });
+  return media.length > 0 ? media : undefined;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -153,7 +176,7 @@ export function parseTimelineData(text: string, { allowEmpty = false } = {}): Ti
       if (!isValidDate(date)) throw new Error(`${path}.date는 유효한 YYYY 또는 YYYY-MM-DD 날짜여야 합니다.`);
       itemIds.add(itemId);
 
-      const media = rawItem.media === undefined ? undefined : parseMedia(rawItem.media, `${path}.media`);
+      const media = rawItem.media === undefined ? undefined : parseMediaList(rawItem.media, `${path}.media`);
 
       const tags = rawItem.tags === undefined ? [] : rawItem.tags;
       if (!Array.isArray(tags) || tags.some((tag) => typeof tag !== "string" || !tag.trim())) {
