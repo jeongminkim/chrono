@@ -19,6 +19,7 @@ function fakeVault() {
     "구매이력/2018/2018-06-05 Apple iPhone 8.md": `---\ntitle: "Apple iPhone 8"\ndate: 2018-06-05\nallDay: true\nprice: 900000\nurl: https://example.com/iphone\n---\n\n![iphone.jpg](https://example.com/iphone.jpg)\n\n실버 64GB #apple`,
     "구매이력/2013/2013-13 잘못된 달.md": "---\ntitle: x\n---\n본문",
     "기록/비밀.md": "---\ntitle: 비밀\n---\n동기화하지 않는 노트",
+    "기록/a/b/c/깊은 노트.md": "---\ntitle: 깊음\n---\n4단계",
     "_attachments/image/tokyo.png": "png",
     "_attachments/image/dsc.jpg": "jpg",
     "_attachments/image/unused.png": "unused",
@@ -82,9 +83,12 @@ test("동기화: 미러 반영, 읽기 전용, 내부 API 숨김, vault 파일 �
   const write = (method, path, body) => fetch(`${base}${path}`, { method, headers: { "x-chrono-edit": "1", "content-type": "application/json" }, body: body && JSON.stringify(body) });
 
   try {
-    // 폴더 탐색: 숨김 폴더와 _attachments는 보이지 않는다.
-    assert.deepEqual((await (await fetch(`${base}/api/settings/vault`)).json()).dirs.map((d) => d.name), ["구매이력", "기록", "여행"]);
-    assert.equal((await fetch(`${base}/api/settings/vault?path=..`)).status, 400);
+    // 폴더 트리: 3단계까지, 숨김 폴더와 _attachments는 보이지 않는다.
+    assert.deepEqual((await (await fetch(`${base}/api/settings/vault`)).json()).dirs.map((d) => `${d.depth}:${d.path}`), [
+      "1:구매이력", "2:구매이력/2013", "2:구매이력/2018", "1:기록", "2:기록/a", "3:기록/a/b", "1:여행", "2:여행/2002", "2:여행/2024",
+    ]);
+    assert.equal((await write("POST", "/api/settings/sources", { path: "기록/a/b/c" })).status, 400);
+    assert.equal((await write("POST", "/api/settings/sources", { path: "../x" })).status, 400);
     assert.equal((await write("POST", "/api/settings/sources", { path: "" })).status, 400);
     assert.equal((await fetch(`${base}/api/settings/sources`, { method: "POST", body: "{}" })).status, 403);
 
@@ -92,6 +96,13 @@ test("동기화: 미러 반영, 읽기 전용, 내부 API 숨김, vault 파일 �
     assert.equal(added.name, "여행");
     assert.deepEqual([added.report.notes, added.report.synced, added.report.skipped.map((s) => s.path)], [2 + 1, 2, ["여행/기타.md"]]);
     assert.equal((await write("POST", "/api/settings/sources", { path: "여행" })).status, 409);
+    // 이미 동기화 중인 디렉터리의 하위·상위 디렉터리는 겹쳐서 추가할 수 없다.
+    const nested = await write("POST", "/api/settings/sources", { path: "여행/2002" });
+    assert.deepEqual([nested.status, (await nested.json()).error], [409, '이미 동기화 중인 "여행"와 상위·하위 디렉터리 관계라 추가할 수 없습니다.']);
+    const sub = await (await write("POST", "/api/settings/sources", { path: "기록/a" })).json();
+    assert.equal((await write("POST", "/api/settings/sources", { path: "기록" })).status, 409);
+    assert.equal((await write("POST", "/api/settings/sources", { path: "기록".normalize("NFD") + "/a" })).status, 409);
+    assert.equal((await write("DELETE", `/api/settings/sources/${sub.themeId}`)).status, 200);
     const purchase = await (await write("POST", "/api/settings/sources", { path: "구매이력" })).json();
     assert.deepEqual(purchase.report.skipped.map((s) => s.path), ["구매이력/2013/2013-13 잘못된 달.md"]);
 

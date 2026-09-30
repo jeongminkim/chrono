@@ -209,10 +209,11 @@ body:has(.m-sheet.open){overflow:hidden}
 .src-ignore{display:flex;align-items:center;gap:8px}
 .src-tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .src-tags .src-hint{flex-basis:100%}
-.crumbs{font-size:14px;color:var(--sema-color-text-subtle)}
-.crumb{all:unset;cursor:pointer;color:var(--sema-color-text-link);font-weight:700}
-.crumb:hover{text-decoration:underline}
-.dirs{display:flex;flex-wrap:wrap;gap:6px;max-height:220px;overflow-y:auto}
-.dir{all:unset;box-sizing:border-box;cursor:pointer;padding:8px 14px;border-radius:var(--radius-button);background:var(--sema-color-background-secondary);font-size:14px;font-weight:600}
-.dir:hover{background:var(--sema-color-hover-background-secondary)}
-.crumb:focus-visible,.dir:focus-visible{box-shadow:var(--focus-ring)}
+.tree{display:flex;flex-direction:column;gap:2px;max-height:360px;overflow-y:auto;border:1px solid var(--sema-color-border-subtle);border-radius:var(--radius-standard);padding:6px}
+.tree-row{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius-standard);font-size:14px}
+.tree-row:hover:not(:disabled){background:var(--sema-color-background-secondary)}
+.tree-row.on{background:var(--sema-color-background-inverse);color:var(--sema-color-text-inverse)}
+.tree-row:disabled{cursor:not-allowed;color:var(--sema-color-text-disabled)}
+.tree-row:focus-visible{box-shadow:var(--focus-ring)}
+.tree-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tree-note{font-size:12px;font-weight:700;color:var(--sema-color-text-subtle)}

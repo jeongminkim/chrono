@@ -395,7 +395,7 @@ const getJson = async (path: string) => {
 };
 const formatTime = (iso?: string) => (iso ? new Date(iso).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "아직 없음");
 
-function SourceRow({ source, edit, onAction }: { source: SyncSource; edit: boolean; onAction: (action: () => Promise<unknown>) => Promise<boolean> }) {
+function SourceRow({ source, disabled, onAction }: { source: SyncSource; disabled: boolean; onAction: (action: () => Promise<unknown>) => Promise<boolean> }) {
   const [ignore, setIgnore] = useState(source.ignoreTags.join(", "));
   useEffect(() => setIgnore(source.ignoreTags.join(", ")), [source.ignoreTags.join(",")]);
   const report = source.report;
@@ -405,8 +405,8 @@ function SourceRow({ source, edit, onAction }: { source: SyncSource; edit: boole
     <div className="src">
       <div className="src-head">
         <div className="src-title"><strong>{source.name}</strong><span className="src-path">vault/{source.path.normalize("NFC")}</span></div>
-        <Button variant="secondary" size="sm" disabled={!edit} onClick={() => onAction(() => api("POST", `${path}/sync`))}>지금 동기화</Button>
-        <Button variant="ghost" size="sm" disabled={!edit} onClick={() => {
+        <Button variant="secondary" size="sm" disabled={disabled} onClick={() => onAction(() => api("POST", `${path}/sync`))}>지금 동기화</Button>
+        <Button variant="ghost" size="sm" disabled={disabled} onClick={() => {
           if (window.confirm(`"${source.name}" 동기화를 해제할까요?\n가져온 사건 ${report?.synced ?? 0}개가 타임라인에서 사라집니다. Obsidian vault는 바뀌지 않습니다.`)) void onAction(() => api("DELETE", path));
         }}>삭제</Button>
       </div>
@@ -421,16 +421,16 @@ function SourceRow({ source, edit, onAction }: { source: SyncSource; edit: boole
         </details>
       )}
       <div className="src-ignore">
-        <Input placeholder="무시할 태그 (쉼표로 구분)" aria-label="무시할 태그" value={ignore} fullWidth disabled={!edit}
+        <Input placeholder="무시할 태그 (쉼표로 구분)" aria-label="무시할 태그" value={ignore} fullWidth
           onChange={(event: { target: { value: string } }) => setIgnore(event.target.value)} />
-        <Button variant="secondary" size="sm" disabled={!edit || ignore === source.ignoreTags.join(", ")}
+        <Button variant="secondary" size="sm" disabled={disabled || ignore === source.ignoreTags.join(", ")}
           onClick={() => onAction(() => api("PATCH", path, JSON.stringify({ ignoreTags: cleanTags(ignore.split(",")) })))}>저장</Button>
       </div>
       {(report?.tags.length ?? 0) > 0 && (
         <div className="src-tags">
           <span className="src-hint">발견된 태그 (눌러서 무시 목록에 추가)</span>
           {report!.tags.slice(0, 40).map(([t, n]) => (
-            <Tag key={t} selected={source.ignoreTags.includes(t)} onClick={edit ? () => addIgnore(t) : undefined}>#{t} {n}</Tag>
+            <Tag key={t} selected={source.ignoreTags.includes(t)} onClick={() => addIgnore(t)}>#{t} {n}</Tag>
           ))}
         </div>
       )}
@@ -438,12 +438,13 @@ function SourceRow({ source, edit, onAction }: { source: SyncSource; edit: boole
   );
 }
 
-function SettingsView({ edit, importing, runImport, resetAll, onChanged }: {
-  edit: boolean; importing: boolean; runImport: () => void; resetAll: () => void; onChanged: () => Promise<void>;
+function SettingsView({ importing, runImport, resetAll, onChanged }: {
+  importing: boolean; runImport: () => void; resetAll: () => void; onChanged: () => Promise<void>;
 }) {
   const [sources, setSources] = useState<SyncSource[]>([]);
   const [mounted, setMounted] = useState<boolean>();
-  const [browse, setBrowse] = useState<{ path: string; dirs: { name: string; path: string }[] }>({ path: "", dirs: [] });
+  const [dirs, setDirs] = useState<{ name: string; path: string; depth: number }[]>([]);
+  const [picked, setPicked] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -456,20 +457,19 @@ function SettingsView({ edit, importing, runImport, resetAll, onChanged }: {
       setError(`설정을 불러오지 못했습니다: ${e instanceof Error ? e.message : e}`);
     }
   }, []);
-  const open = async (path: string) => {
+  const loadDirs = useCallback(async () => {
     try {
-      const result = await getJson(`settings/vault?path=${encodeURIComponent(path)}`);
-      setBrowse({ path: result.path, dirs: result.dirs });
-      setName((result.path.split("/").at(-1) ?? "").normalize("NFC"));
+      setDirs((await getJson("settings/vault")).dirs);
     } catch (e) {
-      setError(`폴더를 열지 못했습니다: ${e instanceof Error ? e.message : e}`);
+      setError(`vault 디렉터리를 읽지 못했습니다: ${e instanceof Error ? e.message : e}`);
     }
-  };
+  }, []);
   useEffect(() => {
-    void load().then(() => open(""));
+    void load();
+    void loadDirs();
     const timer = window.setInterval(load, 5_000);
     return () => window.clearInterval(timer);
-  }, [load]);
+  }, [load, loadDirs]);
   // 쓰기 작업 공통: 실패하면 메시지를 보여 주고, 끝나면 목록과 타임라인을 다시 읽는다.
   const onAction = async (action: () => Promise<unknown>) => {
     setBusy(true);
@@ -486,53 +486,73 @@ function SettingsView({ edit, importing, runImport, resetAll, onChanged }: {
       setBusy(false);
     }
   };
-  const synced = new Set(sources.map((s) => s.path));
-  // 경로는 서버의 실제 파일 이름(macOS에서 온 NFD일 수 있음) 그대로 주고받고, 화면에는 NFC로 보여 준다.
-  const crumbs = browse.path ? browse.path.split("/") : [];
+  // 경로는 서버의 실제 파일 이름(macOS에서 온 NFD일 수 있음) 그대로 주고받고, 비교와 표시는 NFC로 한다.
+  const nfc = (path: string) => path.normalize("NFC");
+  const blockedBy = (path: string) => sources.find((s) => {
+    const [a, b] = [nfc(s.path), nfc(path)];
+    return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+  });
+  const pick = (path: string) => {
+    setPicked(path);
+    setName(nfc(path.split("/").at(-1) ?? ""));
+  };
 
   return (
     <div className="settings">
       <p className="eyebrow">설정</p>
       <h1 className="h-title">설정</h1>
-      {!edit && <p className="notice">보기 전용입니다. LNB의 <strong>편집 허용</strong>을 켜면 아래 작업을 할 수 있습니다.</p>}
       {error && <p className="notice error" role="alert">{error}</p>}
 
       <section className="set-sec">
         <h2>데이터 가져오기</h2>
-        <p className="set-desc">서버 import 디렉터리의 <code>data.json</code>을 가져오거나, 저장된 데이터를 초기화합니다. 초기화해도 Obsidian에서 동기화하는 테마는 남습니다.</p>
+        <p className="set-desc">서버 import 디렉터리의 <code>data.json</code>과 이미지를 가져옵니다. 먼저 검증 결과를 보여 주고, 확인하면 가져온 뒤 원본을 삭제합니다.</p>
         <div className="set-actions">
-          <Button variant="secondary" size="sm" disabled={!edit || importing} onClick={runImport}>{importing ? "import 중…" : "import"}</Button>
-          <Button variant="ghost" size="sm" disabled={!edit || importing} onClick={resetAll}>reset</Button>
+          <Button variant="secondary" size="sm" disabled={importing} onClick={runImport}>{importing ? "import 중…" : "import"}</Button>
+        </div>
+      </section>
+
+      <section className="set-sec">
+        <h2>데이터 초기화</h2>
+        <p className="set-desc">저장된 모든 테마·사건과 첨부 이미지를 삭제합니다. 되돌릴 수 없으니 필요하면 먼저 export로 백업하세요. Obsidian에서 동기화하는 테마는 삭제되지 않습니다.</p>
+        <div className="set-actions">
+          <Button variant="secondary" size="sm" disabled={importing} onClick={resetAll}>reset</Button>
         </div>
       </section>
 
       <section className="set-sec">
         <h2>Obsidian 동기화</h2>
-        <p className="set-desc">vault의 디렉터리를 테마로 등록하면 노트가 사건으로 들어오고, 노트를 고치면 자동으로 반영됩니다. 동기화한 테마와 사건은 이 화면에서 동기화를 해제하는 것 말고는 수정하거나 삭제할 수 없습니다.</p>
+        <p className="set-desc">vault의 디렉터리를 테마로 등록하면 노트가 사건으로 들어오고, 노트를 고치면 자동으로 반영됩니다. 동기화한 테마와 사건은 여기서 동기화를 해제하는 것 말고는 수정하거나 삭제할 수 없습니다.</p>
         {mounted === false && <p className="notice warning">Obsidian vault가 마운트되지 않았습니다. 서버의 <code>VAULT_DIR</code>과 docker compose 볼륨을 확인하세요.</p>}
         {sources.length === 0 && mounted && <p className="set-desc">동기화 중인 디렉터리가 없습니다.</p>}
-        {sources.map((source) => <SourceRow key={source.themeId} source={source} edit={edit && !busy} onAction={onAction} />)}
+        {sources.map((source) => <SourceRow key={source.themeId} source={source} disabled={busy} onAction={onAction} />)}
 
         {mounted && (
           <div className="src add">
             <strong>디렉터리 추가</strong>
-            <div className="crumbs">
-              <button className="crumb" onClick={() => open("")}>vault</button>
-              {crumbs.map((part, i) => <span key={i}> / <button className="crumb" onClick={() => open(crumbs.slice(0, i + 1).join("/"))}>{part.normalize("NFC")}</button></span>)}
-            </div>
-            <div className="dirs">
-              {browse.dirs.length === 0 && <span className="src-hint">하위 폴더가 없습니다.</span>}
-              {browse.dirs.map((d) => <button key={d.path} className="dir" onClick={() => open(d.path)}>{d.name}{synced.has(d.path) ? " (동기화 중)" : ""}</button>)}
+            <span className="src-hint">vault 아래 3단계까지 표시합니다. 이미 동기화 중인 디렉터리와 그 상위·하위 디렉터리는 고를 수 없습니다.</span>
+            <div className="tree" role="listbox" aria-label="vault 디렉터리">
+              {dirs.length === 0 && <span className="src-hint">디렉터리가 없습니다.</span>}
+              {dirs.map((d) => {
+                const clash = blockedBy(d.path);
+                const reason = clash && (nfc(clash.path) === nfc(d.path) ? "동기화 중" : `"${nfc(clash.path)}" 동기화와 겹침`);
+                return (
+                  <button key={d.path} role="option" aria-selected={picked === d.path} disabled={Boolean(clash)}
+                    className={`tree-row${picked === d.path ? " on" : ""}`} style={{ paddingLeft: 12 + (d.depth - 1) * 20 }} onClick={() => pick(d.path)}>
+                    <span className="tree-name">{d.name}</span>
+                    {reason && <span className="tree-note">{reason}</span>}
+                  </button>
+                );
+              })}
             </div>
             <div className="src-ignore">
-              <Input placeholder="테마 이름" aria-label="테마 이름" value={name} fullWidth disabled={!edit || !browse.path}
+              <Input placeholder={picked ? "테마 이름" : "위 목록에서 디렉터리를 고르세요"} aria-label="테마 이름" value={name} fullWidth disabled={!picked}
                 onChange={(event: { target: { value: string } }) => setName(event.target.value)} />
-              <Button size="sm" disabled={!edit || busy || !browse.path || synced.has(browse.path)}
-                onClick={() => onAction(() => api("POST", "settings/sources", JSON.stringify({ path: browse.path, name })))}>
-                {busy ? "동기화 중…" : "이 폴더 동기화"}
+              <Button size="sm" disabled={busy || !picked || Boolean(blockedBy(picked))}
+                onClick={() => onAction(() => api("POST", "settings/sources", JSON.stringify({ path: picked, name }))).then((ok) => { if (ok) setPicked(""); })}>
+                {busy ? "동기화 중…" : "동기화"}
               </Button>
             </div>
-            {!browse.path && <span className="src-hint">동기화할 폴더를 위 목록에서 골라 들어가세요.</span>}
+            {picked && <span className="src-hint">선택: vault/{nfc(picked)}</span>}
           </div>
         )}
       </section>
@@ -730,7 +750,7 @@ export default function App() {
       <main className={`main${sel ? " open" : ""}`}>
         <div className="wrap">
           {message && <p className={`notice ${data ? "warning" : "error"}`} role="alert">{message}</p>}
-          {route === "settings" ? <SettingsView edit={edit} importing={importing} runImport={runImport} resetAll={resetAll} onChanged={refresh} /> : !data ? !message && <p className="notice" role="status">타임라인을 불러오는 중입니다.</p> : <>
+          {route === "settings" ? <SettingsView importing={importing} runImport={runImport} resetAll={resetAll} onChanged={refresh} /> : !data ? !message && <p className="notice" role="status">타임라인을 불러오는 중입니다.</p> : <>
             <p className="eyebrow">{list.length}개 이벤트{tag && ` · #${tag}`}{q && ` · “${q}” 검색 결과`}</p>
             <h1 className="h-title">{heading}</h1>
             <div className="tl">

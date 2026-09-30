@@ -33,7 +33,7 @@ npm start
 - `import/HOWTO_MAKE_DATA.md`: 필드 규격, 예시, LLM용 프롬프트
 - `import/data.json`, `import/images/`: import할 원본. **import에 성공하면 `data.json`과 import한 이미지가 자동 삭제됩니다.** 참조되지 않은 파일과 HOWTO 문서는 남습니다.
 
-**화면에서 import:** LNB의 **편집 허용** 스위치를 켜고 설정 화면(`/settings`)의 **import** 버튼을 누르면, 서버의 import 디렉터리(컨테이너 `/import`, 로컬 `import/`)를 먼저 검증해 추가·건너뜀 건수를 보여 주고, 확인하면 가져옵니다. 동작은 아래 기본 import(추가 전용)와 같습니다. 같은 줄의 **reset** 버튼은 저장된 모든 테마·사건과 첨부 이미지를 삭제합니다(되돌릴 수 없으니 먼저 export로 백업하세요). Obsidian에서 동기화하는 테마는 reset·export 대상이 아닙니다.
+**화면에서 import:** 설정 화면(`/settings`)의 **import** 버튼을 누르면, 서버의 import 디렉터리(컨테이너 `/import`, 로컬 `import/`)를 먼저 검증해 추가·건너뜀 건수를 보여 주고, 확인하면 가져옵니다. 동작은 아래 기본 import(추가 전용)와 같습니다. **데이터 초기화** 카드의 **reset** 버튼은 저장된 모든 테마·사건과 첨부 이미지를 삭제합니다(되돌릴 수 없으니 먼저 export로 백업하세요). Obsidian에서 동기화하는 테마는 reset·export 대상이 아닙니다.
 
 **명령으로 import:** 덮어쓰기(`--overwrite`)나 교체(`--replace`)가 필요할 때 씁니다. 컨테이너가 떠 있으면 `run --rm` 대신 `exec`도 됩니다.
 
@@ -66,8 +66,9 @@ docker compose run --rm -v "$PWD/export:/export" chrono node store.mjs export /e
 
 ## Obsidian 동기화
 
-설정 화면에서 Obsidian vault의 디렉터리를 골라 테마로 등록하면, 그 아래 `.md` 노트가 사건으로 들어오고 노트를 고치면 몇 초 안에 반영됩니다(5분마다 전체 재검사도 함). 상세 규칙은 [documents/SETTINGS_OBSIDIAN_PLAN.md](documents/SETTINGS_OBSIDIAN_PLAN.md)를 참고하세요.
+설정 화면에서 Obsidian vault의 디렉터리(3단계까지 트리로 표시)를 골라 테마로 등록하면, 그 아래 `.md` 노트가 사건으로 들어오고 노트를 고치면 몇 초 안에 반영됩니다(5분마다 전체 재검사도 함). 상세 규칙은 [documents/SETTINGS_OBSIDIAN_PLAN.md](documents/SETTINGS_OBSIDIAN_PLAN.md)를 참고하세요.
 
+- **디렉터리 선택:** 이미 동기화 중인 디렉터리와 그 상위·하위 디렉터리는 고를 수 없습니다. 같은 노트가 두 테마에 들어가지 않게 하기 위해서입니다(서버도 같은 규칙으로 거부).
 - **마운트:** `compose.yaml`이 vault(`/home/kyo/syncthing/obsidian/personal`)를 컨테이너 `/vault`에 **읽기 전용**으로 연결합니다(`VAULT_DIR=/vault`). 앱은 vault를 절대 수정하지 않습니다. 경로가 다르면 `compose.yaml`을 고치세요.
 - **변환 규칙:** 날짜는 frontmatter `date` → 파일 이름 앞의 `YYYY`, `YYYY-MM`, `YYYY-MM-DD` 순으로 찾고, 날짜가 없는 노트는 건너뛰고 설정 화면에 보고합니다. 제목은 frontmatter `title`(앞의 날짜 제거), 요약은 frontmatter `description`/`summary` 또는 본문 첫 문단입니다. 본문은 Markdown(표·제목·목록)으로 보이고, 첫 이미지가 카드 대표 이미지가 됩니다. PDF·동영상 등 이미지가 아닌 첨부는 파일 링크로 바뀝니다.
 - **태그:** frontmatter `tags`와 본문의 `#태그`를 씁니다. 의미 없는 태그(예: `#e775`)는 설정 화면의 "무시할 태그"에 넣으세요.

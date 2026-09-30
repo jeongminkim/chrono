@@ -166,7 +166,7 @@ async function listNotes(dir, prefix = "") {
  * - start(): 모든 소스를 동기화하고 fs.watch(recursive)로 감시, 5분마다 전체 재검사
  * - 소스마다 한 번에 하나만 동기화하고, 진행 중에 들어온 요청은 끝난 뒤 한 번 더 실행한다.
  */
-export function createSyncer(store, vaultDir, { debounceMs = 2000, rescanMs = 5 * 60_000 } = {}) {
+export function createSyncer(store, vaultDir, { debounceMs = 2000, rescanMs = 5 * 60_000, maxDepth = 3 } = {}) {
   const root = vaultDir && existsSync(vaultDir) ? realpathSync(vaultDir) : null;
   const running = new Map();
   const watchers = new Map();
@@ -316,18 +316,33 @@ export function createSyncer(store, vaultDir, { debounceMs = 2000, rescanMs = 5 
   return {
     mounted: Boolean(root),
     list: sources,
-    listDirs(path) {
-      const { clean, real } = dirPath(path);
-      return readdir(real, { withFileTypes: true }).then((entries) => entries
-        .filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "_attachments")
-        .map((e) => ({ name: nfc(e.name), path: clean ? `${clean}/${e.name}` : e.name }))
-        .sort((a, b) => a.name.localeCompare(b.name, "ko")))
-        .then((dirs) => ({ path: clean, dirs }));
+    // vault 디렉터리 구조(최대 maxDepth단계)를 트리 순서의 평면 목록으로 돌려준다. 숨김 폴더와 _attachments는 뺀다.
+    async tree() {
+      dirPath("");
+      const dirs = [];
+      const walk = async (real, prefix, depth) => {
+        const entries = (await readdir(real, { withFileTypes: true }))
+          .filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "_attachments")
+          .sort((a, b) => nfc(a.name).localeCompare(nfc(b.name), "ko"));
+        for (const e of entries) {
+          const path = prefix ? `${prefix}/${e.name}` : e.name;
+          dirs.push({ name: nfc(e.name), path, depth });
+          if (depth < maxDepth) await walk(join(real, e.name), path, depth + 1);
+        }
+      };
+      await walk(root, "", 1);
+      return dirs;
     },
     async add({ path, name, ignoreTags = [] } = {}) {
       const { clean } = dirPath(path);
       if (!clean) throw new StoreError(400, "vault 최상위는 추가할 수 없습니다. 하위 디렉터리를 고르세요.");
-      if (store.db.prepare("SELECT 1 FROM sync_sources WHERE vault_path = ?").get(clean)) throw new StoreError(409, "이미 동기화 중인 디렉터리입니다.");
+      if (clean.split("/").length > maxDepth) throw new StoreError(400, `vault 아래 ${maxDepth}단계까지의 디렉터리만 동기화할 수 있습니다.`);
+      // 같은 노트가 두 테마에 들어가지 않도록, 이미 동기화 중인 디렉터리와 같거나 상위·하위 관계면 거부한다.
+      const clash = sources().find((s) => overlaps(s.path, clean));
+      if (clash) {
+        throw new StoreError(409, nfc(clash.path) === nfc(clean) ? "이미 동기화 중인 디렉터리입니다."
+          : `이미 동기화 중인 "${nfc(clash.path)}"와 상위·하위 디렉터리 관계라 추가할 수 없습니다.`);
+      }
       const themeName = nfc(String(name ?? "").trim() || posix.basename(clean));
       const themeId = `obsidian-${sha1(nfc(clean)).slice(0, 8)}`;
       if (store.db.prepare("SELECT 1 FROM themes WHERE id = ?").get(themeId)) throw new StoreError(409, `테마 id "${themeId}"이(가) 이미 있습니다.`);
@@ -384,6 +399,12 @@ export function createSyncer(store, vaultDir, { debounceMs = 2000, rescanMs = 5 
       for (const themeId of [...watchers.keys()]) unwatch(themeId);
     },
   };
+}
+
+// 두 vault 경로가 같거나 한쪽이 다른 쪽의 상위 디렉터리인지(NFC/NFD 차이는 무시)
+export function overlaps(a, b) {
+  const [x, y] = [nfc(a), nfc(b)];
+  return x === y || x.startsWith(`${y}/`) || y.startsWith(`${x}/`);
 }
 
 // 키 순서와 무관하게 비교하기 위한 직렬화

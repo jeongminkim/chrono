@@ -168,7 +168,7 @@ async function handleSettings(request, response, store, syncer, url) {
   const method = request.method;
   try {
     if (pathname === "/api/settings/vault" && method === "GET") {
-      sendJson(response, 200, syncer.mounted ? { mounted: true, ...(await syncer.listDirs(url.searchParams.get("path") ?? "")) } : { mounted: false, path: "", dirs: [] });
+      sendJson(response, 200, syncer.mounted ? { mounted: true, dirs: await syncer.tree() } : { mounted: false, dirs: [] });
       return;
     }
     const match = sourceRoute.exec(pathname);
