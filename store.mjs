@@ -17,7 +17,7 @@ const isLocal = (src) => !/^[a-z][a-z0-9+.-]*:/i.test(src) && !src.startsWith("/
 const mediaPaths = (media = []) => media.flatMap((m) => [m.type === "image" && m.src, m.poster]).filter((src) => src && isLocal(src));
 
 // 파일 이름을 내용 해시로 바꾸면 서로 다른 경로(예: "a.jpg"와 "./a.jpg", 내용이 같은 두 파일)가 같은 src가 된다.
-// 한 사건 안에서 같은 src는 규격 위반이라 화면 전체가 못 읽으므로, 처음 것만 남긴다.
+// 지금은 import가 이를 오류로 거부하지만, 이전 버전이 DB에 남긴 중복은 열 때 처음 것만 남겨 고친다.
 const uniqueMedia = (media) => media.filter((m, i) => media.findIndex((x) => x.src === m.src) === i);
 
 // HTTP 응답 코드로 옮길 수 있는 저장소 오류
@@ -158,7 +158,53 @@ export async function importDir(store, dir, { dryRun = false, overwrite = false,
     revision: revision(store),
     dryRun,
   };
-  if (dryRun) return summary;
+
+  // 저장될 모습(파일 이름을 내용 해시로 바꾼 뒤) 그대로 사건마다 검사한다. 오류는 모두 모아 한 번에 알려 준다.
+  const errors = [];
+  const rows = [];
+  for (const theme of data.themes) {
+    for (const item of theme.items) {
+      if (!written.has(`${theme.id}/${item.id}`)) continue;
+      const media = item.media?.map((m) => ({ ...m, src: toStored(m.src), ...(m.type === "video" && m.poster && { poster: toStored(m.poster) }) }));
+      media?.forEach((m, i) => {
+        const first = media.findIndex((x) => x.src === m.src);
+        if (first !== i) {
+          errors.push(`${theme.id}/${item.id}: media[${i}] "${item.media[i].src}"는 media[${first}] "${item.media[first].src}"와 같은 이미지입니다(파일 내용이 같음).`);
+        }
+      });
+      rows.push({ themeId: theme.id, item: { ...item, ...(media && { media }) } });
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`data.json 검증 실패 (${errors.length}건)\n${errors.slice(0, 20).join("\n")}${errors.length > 20 ? `\n… 외 ${errors.length - 20}건` : ""}`);
+  }
+
+  const upsertTheme = db.prepare(`
+    INSERT INTO themes (id, name, sort_order) VALUES (?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM themes))
+    ON CONFLICT (id) DO ${overwrite ? "UPDATE SET name = excluded.name" : "NOTHING"}`);
+  const removeMissing = db.prepare("DELETE FROM items WHERE theme_id = ? AND id NOT IN (SELECT value FROM json_each(?))");
+  const write = () => {
+    for (const theme of data.themes) upsertTheme.run(theme.id, theme.name);
+    for (const { themeId, item } of rows) writeItem(store, themeId, item);
+    if (replace) for (const theme of data.themes) removeMissing.run(theme.id, JSON.stringify(theme.items.map((item) => item.id)));
+    // 최종 안전장치: 기존 데이터와 합친 결과를 화면과 같은 규칙으로 읽을 수 있어야 커밋한다.
+    try {
+      parseTimelineData(JSON.stringify(readTimeline(store)), { allowEmpty: true });
+    } catch (error) {
+      throw new Error(`import 후 데이터가 올바르지 않아 취소했습니다: ${error instanceof Error ? error.message : error}`);
+    }
+  };
+
+  if (dryRun) {
+    // 실제 import와 같은 검사를 거친 뒤 항상 되돌린다.
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      write();
+    } finally {
+      db.exec("ROLLBACK");
+    }
+    return summary;
+  }
 
   for (const { path, name } of files.values()) {
     const target = join(mediaDir, name);
@@ -167,25 +213,7 @@ export async function importDir(store, dir, { dryRun = false, overwrite = false,
       await rename(`${target}.tmp`, target);
     }
   }
-
-  const upsertTheme = db.prepare(`
-    INSERT INTO themes (id, name, sort_order) VALUES (?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM themes))
-    ON CONFLICT (id) DO ${overwrite ? "UPDATE SET name = excluded.name" : "NOTHING"}`);
-  const removeMissing = db.prepare("DELETE FROM items WHERE theme_id = ? AND id NOT IN (SELECT value FROM json_each(?))");
-
-  transaction(store, () => {
-    for (const theme of data.themes) {
-      upsertTheme.run(theme.id, theme.name);
-      for (const item of theme.items) {
-        if (!written.has(`${theme.id}/${item.id}`)) continue;
-        writeItem(store, theme.id, {
-          ...item,
-          ...(item.media && { media: uniqueMedia(item.media.map((m) => ({ ...m, src: toStored(m.src), ...(m.type === "video" && m.poster && { poster: toStored(m.poster) }) }))) }),
-        });
-      }
-      if (replace) removeMissing.run(theme.id, JSON.stringify(theme.items.map((item) => item.id)));
-    }
-  });
+  transaction(store, write);
   summary.revision = revision(store);
 
   await removeSource(root, [dataPath, ...[...files.values()].map((file) => file.path)]);

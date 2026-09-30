@@ -149,18 +149,36 @@ test("화면 편집: 수정, 이미지 추가·삭제, 사건·테마 삭제", a
   assert.deepEqual(readdirSync(store.mediaDir), []);
 });
 
-test("경로가 달라도 내용이 같은 이미지는 한 사건에 한 번만 저장하고, 기존 중복도 고친다", async () => {
+test("내용이 같은 이미지가 한 사건에 겹치면 import(와 dry-run)를 거부하고, 기존 DB의 중복은 고친다", async () => {
   const dir = mkdtempSync(join(tmpdir(), "chrono-store-"));
   const store = openStore(dir, { mediaGraceMs: 0 });
-  await importDir(store, importFolder([{ id: "a", name: "A", items: [item("one", image("images/x.png", "./images/x.png", "images/copy.png", "images/y.png"))] }],
-    { "images/x.png": "same", "images/copy.png": "same", "images/y.png": "other" }));
-  assert.equal(readTimeline(store).themes[0].items[0].media.length, 2);
+  const folder = importFolder([
+    { id: "a", name: "A", items: [item("one", image("images/x.png", "./images/x.png")), item("two", image("images/x.png", "images/copy.png"))] },
+  ], { "images/x.png": "same", "images/copy.png": "same" });
+  for (const dryRun of [true, false]) {
+    await assert.rejects(importDir(store, folder, { dryRun }), (e) =>
+      /검증 실패 \(2건\)/.test(e.message) && /a\/one: media\[1\] "\.\/images\/x\.png"/.test(e.message) && /a\/two: media\[1\] "images\/copy\.png"/.test(e.message));
+  }
+  assert.ok(existsSync(join(folder, "data.json")));
+  assert.deepEqual([readTimeline(store).themes, revision(store)], [[], 0]);
 
   // 이전 버전이 남긴 중복 행은 DB를 열 때 고친다.
+  await importDir(store, importFolder([{ id: "a", name: "A", items: [item("one", image("x.png"))] }], { "x.png": "1" }));
   const [first] = readTimeline(store).themes[0].items[0].media;
   store.db.prepare("UPDATE items SET media = ?").run(JSON.stringify([first, first]));
   store.db.close();
   assert.equal(readTimeline(openStore(dir)).themes[0].items[0].media.length, 1);
+});
+
+test("합친 결과가 화면 규칙에 맞지 않으면 import 전체를 되돌린다", async () => {
+  const store = newStore();
+  await importDir(store, importFolder([{ id: "a", name: "A", items: [item("one")] }]));
+  store.db.prepare("UPDATE items SET date = '2020-13-45'").run();
+  const folder = importFolder([{ id: "b", name: "B", items: [item("new")] }]);
+  await assert.rejects(importDir(store, folder, { dryRun: true }), /import 후 데이터가 올바르지 않아 취소/);
+  await assert.rejects(importDir(store, folder), /import 후 데이터가 올바르지 않아 취소/);
+  assert.deepEqual(readTimeline(store).themes.map((t) => t.id), ["a"]);
+  assert.ok(existsSync(join(folder, "data.json")));
 });
 
 test("reset은 모든 데이터와 미디어 파일을 지운다", async () => {
