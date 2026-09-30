@@ -136,7 +136,7 @@ npm audit
 
 - 상태 확인: `GET /healthz`
 - 웹사이트: `GET /`
-- 타임라인 데이터: `GET /api/timeline`
+- 타임라인 데이터: `GET /api/timeline` — 규격에 맞지 않는 사건은 빼고 보내며, 서버 로그에 `timeline 규격에 맞지 않아 화면에서 뺀 사건 <테마>/<사건> "제목": 이유`를 남깁니다(같은 사건·이유는 서버 실행 중 한 번).
 - 설정: `GET /api/settings/vault[?path=]`, `GET|POST /api/settings/sources`, `PATCH|DELETE /api/settings/sources/<테마>`, `POST /api/settings/sources/<테마>/sync`
 - vault 첨부: `GET /api/vault/<vault 기준 경로>` (동기화한 노트가 참조하는 파일만)
 - 미디어: `GET /api/media/<sha256>.<ext>`

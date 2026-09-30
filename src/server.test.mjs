@@ -28,6 +28,25 @@ test("앱 서버가 상태, 타임라인 API와 미디어를 제공한다", asyn
     ] }] }));
     await importDir(store, dir);
 
+    // 규격에 맞지 않는 사건이 DB에 있어도 그 사건만 빼고 보내며, 이유를 로그에 한 번만 남긴다.
+    const warnings = [];
+    const warn = console.warn;
+    console.warn = (message) => warnings.push(message);
+    try {
+      store.db.prepare(`INSERT INTO items (theme_id, id, date, title, description, media, updated_at)
+        VALUES ('t', 'bad', '2021', '깨진 사건', 'd', '[{"type":"image","src":"http://x/a.jpg","alt":"a"}]', 'now')`).run();
+      store.db.prepare("UPDATE meta SET value = CAST(value AS INTEGER) + 1 WHERE key = 'revision'").run();
+      for (let i = 0; i < 2; i++) {
+        assert.deepEqual((await (await fetch(`${base}/api/timeline`)).json()).themes[0].items.map((item) => item.id), ["one"]);
+      }
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /t\/bad "깨진 사건": media\[0\]\.src/);
+    } finally {
+      console.warn = warn;
+      store.db.prepare("DELETE FROM items WHERE id = 'bad'").run();
+      store.db.prepare("UPDATE meta SET value = CAST(value AS INTEGER) + 1 WHERE key = 'revision'").run();
+    }
+
     const timeline = await fetch(`${base}/api/timeline`);
     const etag = timeline.headers.get("etag");
     const [media] = (await timeline.json()).themes[0].items[0].media;

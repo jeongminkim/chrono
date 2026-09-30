@@ -148,6 +148,31 @@ export function readTimeline({ db }, { includeSynced = true } = {}) {
   return { version: 1, themes: themes.filter((theme) => theme.items.length > 0) };
 }
 
+// 화면용 타임라인: 규격에 맞지 않는 사건은 빼고 보낸다. 사건 하나 때문에 화면 전체가 데이터를 못 읽는 일을 막는다.
+// 뺀 사건은 서버 로그에 남긴다(같은 사건·같은 이유는 프로세스당 한 번만).
+const reportedInvalid = new Set();
+export async function readValidTimeline(store) {
+  const { parseTimelineData } = await import("./src/data.ts");
+  const themes = readTimeline(store).themes.map((theme) => ({
+    ...theme,
+    items: theme.items.filter((item) => {
+      try {
+        parseTimelineData(JSON.stringify({ version: 1, themes: [{ ...theme, items: [item] }] }));
+        return true;
+      } catch (error) {
+        const reason = String(error instanceof Error ? error.message : error).replace(/^themes\[0\]\.items\[0\]\./, "");
+        const key = `${theme.id}/${item.id}: ${reason}`;
+        if (!reportedInvalid.has(key)) {
+          reportedInvalid.add(key);
+          console.warn(`${new Date().toISOString()} timeline 규격에 맞지 않아 화면에서 뺀 사건 ${theme.id}/${item.id} "${item.title}": ${reason}`);
+        }
+        return false;
+      }
+    }),
+  }));
+  return { version: 1, themes: themes.filter((theme) => theme.items.length > 0) };
+}
+
 // ---- 내부 API 조회 (빈 테마 포함) ----
 
 // 내부 API는 Obsidian 테마를 보여 주지 않는다(없는 것처럼 동작).

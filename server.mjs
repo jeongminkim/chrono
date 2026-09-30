@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { handleInternal } from "./internal-api.mjs";
 import { createSyncer } from "./obsidian.mjs";
 import { mediaThumbKey } from "./thumbs.mjs";
-import { addMedia, deleteItem, importDir, resetStore, setCover, deleteTheme, mediaNamePattern, openStore, readTimeline, removeMedia, revision, StoreError, updateItem } from "./store.mjs";
+import { addMedia, deleteItem, importDir, resetStore, setCover, deleteTheme, mediaNamePattern, openStore, readValidTimeline, removeMedia, revision, StoreError, updateItem } from "./store.mjs";
 
 const projectDir = fileURLToPath(new URL(".", import.meta.url));
 const mimeTypes = {
@@ -72,14 +72,14 @@ async function sendFile(request, response, filePath, cacheControl, { download = 
   }
 }
 
-function sendTimeline(request, response, store) {
+async function sendTimeline(request, response, store) {
   const etag = `"rev-${revision(store)}"`;
   const headers = { ...securityHeaders, "cache-control": "no-cache", "content-type": mimeTypes[".json"], etag };
   if (request.headers["if-none-match"] === etag) {
     response.writeHead(304, headers).end();
     return;
   }
-  const body = JSON.stringify(readTimeline(store));
+  const body = JSON.stringify(await readValidTimeline(store));
   response.writeHead(200, { ...headers, "content-length": Buffer.byteLength(body) });
   response.end(request.method === "HEAD" ? undefined : body);
 }
@@ -257,7 +257,7 @@ export function createApp({
     }
 
     if (pathname === "/api/timeline") {
-      sendTimeline(request, response, store);
+      await sendTimeline(request, response, store);
       return;
     }
     const wantsThumb = new URL(request.url || "/", "http://localhost").searchParams.get("thumb") === "1";
