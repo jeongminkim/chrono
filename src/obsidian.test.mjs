@@ -12,7 +12,7 @@ import { deleteItem, deleteTheme, exportDir, importDir, openStore, readTimeline,
 function fakeVault() {
   const root = mkdtempSync(join(tmpdir(), "chrono-vault-"));
   const files = {
-    "여행/2002/2002-02 일본 도쿄.md": `---\ntitle: "2002-02 일본 도쿄"\ncreated: 2021-03-22 23:04:15\n---\n\n#e775\n\n2002.02.09 - 2002.02.13\n\n아우세 친구와 다녀온 도쿄\n\n- 디즈니씨\n\n![사진.png](../../_attachments/image/tokyo.png)![DSC.JPG](../../_attachments/image/dsc.jpg)\n\n#일본 여행`,
+    "여행/2002/2002-02 일본 도쿄.md": `---\ntitle: "2002-02 일본 도쿄"\ncreated: 2021-03-22 23:04:15\n---\n\n#e775\n\n2002.02.09 - 2002.02.13\n\n아우세 친구와 다녀온 도쿄\n\n- 디즈니씨\n\n![사진.png](../../_attachments/image/tokyo.png)![DSC.JPG](../../_attachments/image/dsc.jpg)![옛날](http://example.com/old.jpg)\n\n#일본 여행`,
     "여행/2024/2024-05 일본 오사카.md": `---\ntitle: "2024-05 일본 오사카"\n---\n\n# 2024-05 일본 오사카\n\n| 항목 | 내용 |\n| --- | --- |\n| 인원 | 3명 |\n\n## 개요\n\n가족 여행.\n\n![](../../_attachments/pdf/ticket.pdf)\n![밖](../../../outside.png)\n[[다른 노트|별칭]]`,
     "여행/기타.md": `---\ntitle: 기타\n---\n\n날짜 없는 노트`,
     "여행/.hidden.md": "---\ntitle: x\n---\n",
@@ -147,6 +147,14 @@ test("동기화: 미러 반영, 읽기 전용, 내부 API 숨김, vault 파일 �
     await syncer.sync(added.themeId);
     assert.equal(readTimeline(store).themes[0].items[0].media[0].src, "vault/_attachments/image/dsc.jpg");
     assert.equal((await cover(item.id, "vault/_attachments/image/unused.png")).status, 404);
+    // 본문에 있어도 http:// 이미지는 사건 규격에 맞지 않아 대표 이미지가 될 수 없다.
+    assert.equal((await cover(item.id, "http://example.com/old.jpg")).status, 400);
+    // 이전 버전 버그로 규격에 맞지 않는 대표 이미지가 저장돼 있어도, 다음 동기화가 노트 기준으로 되돌린다.
+    store.db.prepare("UPDATE sync_covers SET src = 'http://example.com/old.jpg' WHERE item_id = ?").run(item.id);
+    store.db.prepare("UPDATE items SET media = ? WHERE id = ?").run(JSON.stringify([{ type: "image", src: "http://example.com/old.jpg", alt: "a" }]), item.id);
+    await syncer.sync(added.themeId);
+    assert.equal(readTimeline(store).themes[0].items[0].media[0].src, "vault/_attachments/image/tokyo.png");
+    await cover(item.id, "vault/_attachments/image/dsc.jpg");
     assert.equal((await fetch(`${base}/api/themes/${added.themeId}/items/${item.id}/cover`, { method: "POST", body: "{}" })).status, 403);
 
     // reset·export·import는 Obsidian 테마를 건드리지 않는다.

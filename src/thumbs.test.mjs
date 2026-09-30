@@ -30,12 +30,16 @@ test("가로 500px을 넘는 이미지는 썸네일을 만들고 ?thumb=1로 제
     const dir = mkdtempSync(join(tmpdir(), "chrono-import-"));
     writeFileSync(join(dir, "big.png"), await image(1200, 800));
     writeFileSync(join(dir, "small.png"), await image(300, 200));
+    // WebP 한계(16383px)를 넘는 세로로 아주 긴 이미지도 비율을 지킨 썸네일을 만든다.
+    writeFileSync(join(dir, "tall.png"), await image(600, 40000));
     writeFileSync(join(dir, "data.json"), JSON.stringify({ version: 1, themes: [{ id: "t", name: "T", items: [
-      { id: "a", date: "2020", title: "a", description: "d", media: [{ type: "image", src: "big.png", alt: "큰" }, { type: "image", src: "small.png", alt: "작은" }] },
+      { id: "a", date: "2020", title: "a", description: "d", media: [{ type: "image", src: "big.png", alt: "큰" }, { type: "image", src: "small.png", alt: "작은" }, { type: "image", src: "tall.png", alt: "긴" }] },
     ] }] }));
     await importDir(store, dir);
     await store.thumbs.idle();
-    const [big, small] = readTimeline(store).themes[0].items[0].media;
+    const [big, small, tall] = readTimeline(store).themes[0].items[0].media;
+    const tallThumb = await sharp(Buffer.from(await (await fetch(`${base}/api/${tall.src}?thumb=1`)).arrayBuffer())).metadata();
+    assert.deepEqual([tallThumb.format, tallThumb.height <= 16383, tallThumb.width < 500], ["webp", true, true]);
 
     const thumb = await fetch(`${base}/api/${big.src}?thumb=1`);
     assert.equal(thumb.headers.get("content-type"), "image/webp");
@@ -43,7 +47,7 @@ test("가로 500px을 넘는 이미지는 썸네일을 만들고 ?thumb=1로 제
     assert.equal(await widthOf(await fetch(`${base}/api/${big.src}`)), 1200);
     const smallThumb = await fetch(`${base}/api/${small.src}?thumb=1`);
     assert.deepEqual([smallThumb.headers.get("content-type"), await widthOf(smallThumb)], ["image/png", 300]);
-    assert.equal(readdirSync(join(store.dir, "thumbs")).length, 1);
+    assert.equal(readdirSync(join(store.dir, "thumbs")).length, 2);
 
     // 원본이 지워지면 썸네일도 지운다.
     deleteItem(store, "t", "a");

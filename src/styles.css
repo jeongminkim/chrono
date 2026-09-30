@@ -185,7 +185,7 @@ body:has(.m-sheet.open){overflow:hidden}
 .md-body code{font-size:.9em;padding:1px 5px;border-radius:5px;background:var(--sema-color-background-secondary)}
 .md-body pre{overflow-x:auto;padding:12px;border-radius:var(--radius-standard);background:var(--sema-color-background-secondary)}
 .md-body pre code{padding:0;background:none}
-.md-body table{display:block;overflow-x:auto;border-collapse:collapse;margin:0 0 16px;font-size:14px}
+.md-body table{width:100%;border-collapse:collapse;margin:0 0 16px;font-size:14px}
 .md-body th,.md-body td{border:1px solid var(--sema-color-border-subtle);padding:6px 10px;text-align:left;vertical-align:top}
 .md-body th{background:var(--sema-color-background-secondary);font-weight:700;white-space:nowrap}
 .m-sheet .md-body{margin-bottom:24px}
@@ -231,6 +231,12 @@ span.tree-toggle{cursor:default}
 .src-ignore>button{flex:none;white-space:nowrap}
 /* 상세 패널 크기 조절 핸들: 패널 왼쪽 경계선(패널 너비 위치)의 가운데에 걸친다. 패널의 max-width와 같은 식을 쓴다. */
 .panel-resizer{position:fixed;top:0;bottom:0;right:calc(min(var(--panel-w,480px),100vw - 320px) - 6px);margin:0;z-index:6}
+/* Markdown 본문: 이미지만 있는 문단은 패널 너비를 채우는 격자(한 장이면 전체 너비). 패널을 넓히면 같이 커진다. */
+.md-body p.md-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:start}
+.md-body p.md-gallery.single{grid-template-columns:1fr}
+.md-gallery>img,.md-gallery>.md-img{display:block;width:100%;margin:0}
+.md-gallery img{display:block;width:100%;height:auto;margin:0}
+.md-gallery .md-img .cover-badge,.md-gallery .md-img .cover-set{top:8px;left:8px}
 /* 이미지 뷰어 */
 .panel .pm img.zoomable,.m-sheet .pm img.zoomable,.md-body img{cursor:zoom-in}
 .viewer{position:fixed;inset:0;z-index:50;background:rgba(15,12,16,.92);display:grid;place-items:center;padding:64px 88px}

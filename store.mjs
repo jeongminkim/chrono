@@ -450,6 +450,8 @@ export async function addMedia(store, themeId, itemId, bytes, { contentType = ""
   return saveItem(store, themeId, themeName, { ...item, media: [...media, entry] });
 }
 
+export const coverCandidate = (src) => /^vault\/[^/]/.test(src) || /^https:\/\//i.test(src);
+
 // Markdown 본문의 이미지 임베드 목록(Obsidian 사건의 대표 이미지 후보)
 export const markdownImages = (markdown = "") => [...markdown.matchAll(/!\[([^\]]*)\]\(([^)\s]+)\)/g)].map((m) => ({ alt: m[1], src: m[2] }));
 
@@ -462,6 +464,8 @@ export async function setCover(store, themeId, itemId, src) {
   const { themeName, item } = findItem(store, themeId, itemId);
   if (typeof src !== "string" || !src) throw new StoreError(400, "src가 필요합니다.");
   if (isSynced(store, themeId)) {
+    // 사건 규격상 미디어는 vault 안 이미지나 https URL만 된다. 본문의 http:// 이미지 등은 대표 이미지가 될 수 없다.
+    if (!coverCandidate(src)) throw new StoreError(400, "대표 이미지는 vault 안의 이미지나 https 이미지만 고를 수 있습니다.");
     const image = markdownImages(item.body).find((i) => i.src === src);
     if (!image) throw new StoreError(404, "노트 본문에 없는 이미지입니다.");
     transaction(store, () => {

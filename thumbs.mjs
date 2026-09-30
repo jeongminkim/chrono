@@ -7,6 +7,7 @@ import { extname, join } from "node:path";
 import sharp from "sharp";
 
 export const thumbWidth = 500;
+const maxWebpSide = 16383;
 // 애니메이션 GIF와 벡터 SVG는 줄이지 않는다.
 const resizable = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif"]);
 
@@ -33,7 +34,8 @@ export function createThumbnailer(dir, { concurrency = 2 } = {}) {
     const { width } = await image.metadata();
     if (!width || width <= thumbWidth) return;
     const temp = `${target}.${process.pid}.tmp`;
-    await image.rotate().resize({ width: thumbWidth }).webp({ quality: 80 }).toFile(temp);
+    // WebP는 한 변이 16383px까지라, 아주 긴 이미지(세로 스크린샷 등)는 비율을 지킨 채 높이도 제한한다.
+    await image.rotate().resize({ width: thumbWidth, height: maxWebpSide, fit: "inside" }).webp({ quality: 80 }).toFile(temp);
     await rename(temp, target);
   }
   function pump() {

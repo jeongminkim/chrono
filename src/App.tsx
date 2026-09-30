@@ -47,38 +47,11 @@ type ViewerImage = { src: string; alt: string };
 function MarkdownBody({ markdown, coverSrc, onCover, onOpen }: {
   markdown: string; coverSrc?: string; onCover?: (src: string) => void; onOpen?: (images: ViewerImage[], index: number) => void;
 }) {
-  const html = useMemo(() => renderMarkdown(markdown), [markdown]);
+  // 표시(대표 이미지 배지·버튼, 격자 문단)를 HTML 문자열에 미리 넣는다. 렌더 후 DOM을 고치면
+  // React가 다시 그릴 때 innerHTML을 되돌려 표시가 사라진다(패널 크기 조절 중에 확인됨).
+  const canCover = Boolean(onCover);
+  const html = useMemo(() => decorateMarkdown(renderMarkdown(markdown), canCover ? coverSrc ?? "" : null), [markdown, coverSrc, canCover]);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!onCover || !ref.current) return;
-    for (const img of ref.current.querySelectorAll("img")) {
-      // 화면의 경로(/api/vault/…)를 저장된 미디어 경로(vault/…)로 되돌려 대표 이미지와 비교한다.
-      const raw = stripThumb(img.getAttribute("src") ?? "");
-      const src = raw.startsWith(apiBase) ? raw.slice(apiBase.length) : raw;
-      let wrap = img.parentElement?.classList.contains("md-img") ? img.parentElement : null;
-      if (!wrap) {
-        wrap = document.createElement("span");
-        wrap.className = "md-img";
-        img.replaceWith(wrap);
-        wrap.append(img);
-      }
-      wrap.querySelector(".cover-badge, .cover-set")?.remove();
-      const isCover = src === coverSrc;
-      const mark = document.createElement(isCover ? "span" : "button");
-      mark.className = isCover ? "cover-badge" : "cover-set";
-      if (isCover) {
-        mark.title = "타임라인에 보이는 대표 이미지";
-        mark.innerHTML = '<span class="star"></span>대표';
-      } else {
-        (mark as HTMLButtonElement).type = "button";
-        mark.title = "대표 이미지로 지정";
-        mark.setAttribute("aria-label", "대표 이미지로 지정");
-        mark.dataset.coverSrc = src;
-        mark.innerHTML = '<span class="star"></span>';
-      }
-      wrap.append(mark);
-    }
-  }, [html, coverSrc, onCover]);
   return (
     <div ref={ref} className="md-body" dangerouslySetInnerHTML={{ __html: html }}
       onClick={(event) => {
@@ -91,6 +64,49 @@ function MarkdownBody({ markdown, coverSrc, onCover, onOpen }: {
         }
       }} />
   );
+}
+
+// coverSrc가 null이면 대표 이미지 표시를 넣지 않는다(모바일 등).
+function decorateMarkdown(html: string, coverSrc: string | null) {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const root = template.content;
+  for (const img of coverSrc !== null ? root.querySelectorAll("img") : []) {
+    // 화면의 경로(/api/vault/…)를 저장된 미디어 경로(vault/…)로 되돌려 대표 이미지와 비교한다.
+    const raw = stripThumb(img.getAttribute("src") ?? "");
+    const src = raw.startsWith(apiBase) ? raw.slice(apiBase.length) : raw;
+    // vault 안 이미지와 https 이미지만 대표 이미지가 될 수 있다(http:// 이미지 등은 표시만).
+    if (!/^vault\/[^/]/.test(src) && !/^https:\/\//i.test(src)) continue;
+    const wrap = document.createElement("span");
+    wrap.className = "md-img";
+    img.replaceWith(wrap);
+    wrap.append(img);
+    const isCover = src === coverSrc;
+    const mark = document.createElement(isCover ? "span" : "button");
+    mark.className = isCover ? "cover-badge" : "cover-set";
+    if (isCover) {
+      mark.title = "타임라인에 보이는 대표 이미지";
+      mark.innerHTML = '<span class="star"></span>대표';
+    } else {
+      (mark as HTMLButtonElement).type = "button";
+      mark.title = "대표 이미지로 지정";
+      mark.setAttribute("aria-label", "대표 이미지로 지정");
+      mark.dataset.coverSrc = src;
+      mark.innerHTML = '<span class="star"></span>';
+    }
+    wrap.append(mark);
+  }
+  // 이미지만 있는 문단은 패널 너비를 채우는 격자로 보여 준다(패널을 넓히면 이미지도 커진다).
+  for (const p of root.querySelectorAll("p")) {
+    const nodes = [...p.childNodes].filter((n) => !(n.nodeType === Node.TEXT_NODE && !n.textContent?.trim()) && n.nodeName !== "BR");
+    const images = nodes.filter((n) => n.nodeName === "IMG" || (n as Element).classList?.contains("md-img"));
+    const gallery = images.length > 0 && images.length === nodes.length;
+    p.classList.toggle("md-gallery", gallery);
+    p.classList.toggle("single", gallery && images.length === 1);
+  }
+  const out = document.createElement("div");
+  out.append(root);
+  return out.innerHTML;
 }
 
 // 이미지 뷰어(원본). 여러 장이면 좌우 버튼과 ←/→ 키로 넘기고, Esc·배경 클릭으로 닫는다.
