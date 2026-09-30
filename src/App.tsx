@@ -438,6 +438,55 @@ function SourceRow({ source, disabled, onAction }: { source: SyncSource; disable
   );
 }
 
+type DirNode = { name: string; path: string; children: DirNode[] };
+
+// 서버가 준 트리 순서의 평면 목록(depth 포함)을 중첩 구조로 바꾼다.
+function buildTree(dirs: { name: string; path: string; depth: number }[]) {
+  const roots: DirNode[] = [];
+  const stack: DirNode[] = [];
+  for (const d of dirs) {
+    const node = { name: d.name, path: d.path, children: [] };
+    stack.length = d.depth - 1;
+    (stack.at(-1)?.children ?? roots).push(node);
+    stack.push(node);
+  }
+  return roots;
+}
+
+// 접고 펼치는 폴더 트리. 이름을 누르면 선택, 화살표를 누르면 하위 폴더를 펼친다.
+// note(path)가 값을 돌려주면(동기화 중·겹침) 고를 수 없다.
+function DirTree({ nodes, picked, onPick, note, depth = 0 }: {
+  nodes: DirNode[]; picked: string; onPick: (path: string) => void; note: (path: string) => string | undefined; depth?: number;
+}) {
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  return (
+    <ul className={depth === 0 ? "tree" : "tree-group"} role={depth === 0 ? "tree" : "group"} aria-label={depth === 0 ? "vault 디렉터리" : undefined}>
+      {nodes.map((n) => {
+        const expanded = Boolean(open[n.path]);
+        const reason = note(n.path);
+        return (
+          <li key={n.path} role="treeitem" aria-expanded={n.children.length > 0 ? expanded : undefined} aria-selected={picked === n.path}>
+            <div className={`tree-row${picked === n.path ? " on" : ""}${reason ? " blocked" : ""}`}>
+              {n.children.length > 0
+                ? <button className={`tree-toggle${expanded ? " open" : ""}`} aria-label={`${n.name} ${expanded ? "접기" : "펼치기"}`}
+                    onClick={() => setOpen((o) => ({ ...o, [n.path]: !expanded }))}><Glyph name="chevron-right" size={14} /></button>
+                : <span className="tree-toggle" />}
+              <button className="tree-label" disabled={Boolean(reason)} onClick={() => onPick(n.path)}
+                onDoubleClick={() => n.children.length > 0 && setOpen((o) => ({ ...o, [n.path]: !expanded }))}>
+                <span className="tree-icon"><Glyph name={expanded ? "folder-open" : "folder"} size={16} /></span>
+                <span className="tree-name">{n.name}</span>
+                {n.children.length > 0 && <span className="tree-count">{n.children.length}</span>}
+                {reason && <span className="tree-note">{reason}</span>}
+              </button>
+            </div>
+            {expanded && <DirTree nodes={n.children} picked={picked} onPick={onPick} note={note} depth={depth + 1} />}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function SettingsView({ importing, runImport, resetAll, onChanged }: {
   importing: boolean; runImport: () => void; resetAll: () => void; onChanged: () => Promise<void>;
 }) {
@@ -530,19 +579,13 @@ function SettingsView({ importing, runImport, resetAll, onChanged }: {
           <div className="src add">
             <strong>디렉터리 추가</strong>
             <span className="src-hint">vault 아래 3단계까지 표시합니다. 이미 동기화 중인 디렉터리와 그 상위·하위 디렉터리는 고를 수 없습니다.</span>
-            <div className="tree" role="listbox" aria-label="vault 디렉터리">
-              {dirs.length === 0 && <span className="src-hint">디렉터리가 없습니다.</span>}
-              {dirs.map((d) => {
-                const clash = blockedBy(d.path);
-                const reason = clash && (nfc(clash.path) === nfc(d.path) ? "동기화 중" : `"${nfc(clash.path)}" 동기화와 겹침`);
-                return (
-                  <button key={d.path} role="option" aria-selected={picked === d.path} disabled={Boolean(clash)}
-                    className={`tree-row${picked === d.path ? " on" : ""}`} style={{ paddingLeft: 12 + (d.depth - 1) * 20 }} onClick={() => pick(d.path)}>
-                    <span className="tree-name">{d.name}</span>
-                    {reason && <span className="tree-note">{reason}</span>}
-                  </button>
-                );
-              })}
+            <div className="tree-box">
+              {dirs.length === 0 ? <span className="src-hint">디렉터리가 없습니다.</span> : (
+                <DirTree nodes={buildTree(dirs)} picked={picked} onPick={pick} note={(path) => {
+                  const clash = blockedBy(path);
+                  return clash && (nfc(clash.path) === nfc(path) ? "동기화 중" : "겹침");
+                }} />
+              )}
             </div>
             <div className="src-ignore">
               <Input placeholder={picked ? "테마 이름" : "위 목록에서 디렉터리를 고르세요"} aria-label="테마 이름" value={name} fullWidth disabled={!picked}
