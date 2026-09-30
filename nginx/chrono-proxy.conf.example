@@ -4,6 +4,11 @@ server {
     listen 80;
     server_name chrono.example.com;   # 실제 도메인으로 변경 (TLS 설정은 운영 환경에 맞게 추가)
 
+    # 컨테이너 간 내부 API(/internal/)는 외부에 열지 않는다. location /보다 우선하도록 ^~ 를 쓴다.
+    location ^~ /internal/ {
+        return 404;
+    }
+
     location / {
         # 인증 예시 (Basic Auth). 다른 방식(auth_request, OAuth 프록시 등)을 써도 됩니다.
         # htpasswd 파일 생성: htpasswd -c /etc/nginx/chrono.htpasswd <사용자>
@@ -16,6 +21,7 @@ server {
         proxy_pass http://chrono:3000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
+        # 앱은 이 헤더가 붙은 /internal/ 요청을 거부한다(차단 설정을 빠뜨렸을 때의 안전장치). 지우지 마세요.
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }

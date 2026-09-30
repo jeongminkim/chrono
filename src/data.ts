@@ -11,11 +11,13 @@ export interface TimelineItem {
   tags: string[];
   media?: TimelineMedia[];
   sourceUrl?: string;
+  bodyFormat?: "markdown";
 }
 
 export interface TimelineTheme {
   id: string;
   name: string;
+  source?: "obsidian";
   items: TimelineItem[];
 }
 
@@ -41,7 +43,7 @@ export function findTimelineItem(themes: TimelineTheme[], query: string) {
   }
 }
 
-const idPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const idPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const maxMediaCount = 5;
 
 // 앞뒤 공백과 빈 값, 중복을 없앤다. 화면의 쉼표 입력과 서버의 태그 수정이 함께 쓴다.
@@ -49,8 +51,10 @@ export function cleanTags(tags: string[]): string[] {
   return [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))];
 }
 
-function isValidDate(value: string): boolean {
+// YYYY, YYYY-MM(월까지만 아는 사건), YYYY-MM-DD
+export function isValidDate(value: string): boolean {
   if (/^\d{4}$/.test(value)) return true;
+  if (/^\d{4}-\d{2}$/.test(value)) return Number(value.slice(5)) >= 1 && Number(value.slice(5)) <= 12;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(date.valueOf()) && date.toISOString().startsWith(value);
@@ -173,7 +177,7 @@ export function parseTimelineData(text: string, { allowEmpty = false } = {}): Ti
       if (!idPattern.test(itemId) || itemIds.has(itemId)) {
         throw new Error(`항목 id "${itemId}"이(가) 잘못됐거나 중복됐습니다.`);
       }
-      if (!isValidDate(date)) throw new Error(`${path}.date는 유효한 YYYY 또는 YYYY-MM-DD 날짜여야 합니다.`);
+      if (!isValidDate(date)) throw new Error(`${path}.date는 유효한 YYYY, YYYY-MM 또는 YYYY-MM-DD 날짜여야 합니다.`);
       itemIds.add(itemId);
 
       const media = rawItem.media === undefined ? undefined : parseMediaList(rawItem.media, `${path}.media`);
@@ -202,12 +206,16 @@ export function parseTimelineData(text: string, { allowEmpty = false } = {}): Ti
         tags: [...new Set(tags)],
         ...(media && { media }),
         ...(sourceUrl && { sourceUrl }),
+        // Obsidian에서 동기화한 본문은 Markdown으로 렌더링한다. 그 밖에는 일반 텍스트.
+        ...(rawItem.bodyFormat === "markdown" && { bodyFormat: "markdown" as const }),
       };
     });
 
     return {
       id,
       name: requiredString(rawTheme.name, `themes[${themeIndex}].name`),
+      // vault에서 동기화한 테마(읽기 전용)
+      ...(rawTheme.source === "obsidian" && { source: "obsidian" as const }),
       items: items.sort((a, b) => a.date.localeCompare(b.date)),
     };
   });

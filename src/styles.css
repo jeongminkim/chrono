@@ -165,3 +165,54 @@ body:has(.m-sheet.open){overflow:hidden}
 .m-nav{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .edit-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
 .edit-actions-lnb{display:flex;gap:6px}
+/* 요약·내용의 줄바꿈(CR/LF)을 화면에 그대로 표시한다. HTML로 바꾸지 않으므로 입력값은 텍스트로만 렌더링된다. */
+.card .txt p,.panel .body,.summary-edit .summary,.m-card .txt p,.m-sheet .body{white-space:pre-line}
+/* LNB 상단 버튼, 배지 */
+.head-btns{display:flex;gap:6px}
+.badges{display:flex;flex-wrap:wrap;gap:6px}
+/* Obsidian Markdown 본문 */
+.md-body{font-size:var(--font-size-body);line-height:1.65;margin:0 0 28px;overflow-wrap:anywhere}
+.md-body>:first-child{margin-top:0}
+.md-body h1,.md-body h2,.md-body h3,.md-body h4{font-size:18px;font-weight:700;letter-spacing:-.3px;line-height:1.3;margin:28px 0 10px}
+.md-body h1,.md-body h2{font-size:20px}
+.md-body p,.md-body ul,.md-body ol,.md-body blockquote{margin:0 0 14px}
+.md-body ul,.md-body ol{padding-left:22px}
+.md-body li+li{margin-top:4px}
+.md-body img{display:inline-block;max-width:100%;height:auto;border-radius:var(--radius-standard);margin:6px 6px 6px 0;vertical-align:top;background:var(--sema-color-background-secondary)}
+.md-body a{color:var(--sema-color-text-link);word-break:break-all}
+.md-body hr{border:0;border-top:1px solid var(--sema-color-border-subtle);margin:24px 0}
+.md-body blockquote{padding-left:14px;border-left:3px solid var(--sema-color-border-default);color:var(--sema-color-text-subtle)}
+.md-body code{font-size:.9em;padding:1px 5px;border-radius:5px;background:var(--sema-color-background-secondary)}
+.md-body pre{overflow-x:auto;padding:12px;border-radius:var(--radius-standard);background:var(--sema-color-background-secondary)}
+.md-body pre code{padding:0;background:none}
+.md-body table{display:block;overflow-x:auto;border-collapse:collapse;margin:0 0 16px;font-size:14px}
+.md-body th,.md-body td{border:1px solid var(--sema-color-border-subtle);padding:6px 10px;text-align:left;vertical-align:top}
+.md-body th{background:var(--sema-color-background-secondary);font-weight:700;white-space:nowrap}
+.m-sheet .md-body{margin-bottom:24px}
+/* 설정 화면 */
+.settings{padding-bottom:100px}
+.settings .h-title{margin-bottom:32px}
+.settings .notice{margin:0 0 20px}
+.set-sec{background:var(--sema-color-background-card);border-radius:var(--radius-comfortable);padding:28px;margin-bottom:24px}
+.set-sec h2{margin:0 0 8px;font-size:22px;font-weight:700;letter-spacing:-.6px}
+.set-desc{margin:0 0 18px;color:var(--sema-color-text-subtle);line-height:var(--line-height-body)}
+.set-actions{display:flex;gap:8px}
+.src{border-top:1px solid var(--sema-color-border-subtle);padding:20px 0 4px;display:grid;gap:12px}
+.src-head{display:flex;align-items:center;gap:8px}
+.src-title{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.src-title strong{font-size:17px}
+.src-path,.src-meta,.src-hint{font-size:13px;color:var(--sema-color-text-subtle)}
+.src-meta{margin:0}
+.src-skipped{font-size:14px}
+.src-skipped summary{cursor:pointer;color:var(--sema-color-text-subtle)}
+.src-skipped ul{margin:8px 0 0;padding-left:20px;line-height:1.6}
+.src-ignore{display:flex;align-items:center;gap:8px}
+.src-tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.src-tags .src-hint{flex-basis:100%}
+.crumbs{font-size:14px;color:var(--sema-color-text-subtle)}
+.crumb{all:unset;cursor:pointer;color:var(--sema-color-text-link);font-weight:700}
+.crumb:hover{text-decoration:underline}
+.dirs{display:flex;flex-wrap:wrap;gap:6px;max-height:220px;overflow-y:auto}
+.dir{all:unset;box-sizing:border-box;cursor:pointer;padding:8px 14px;border-radius:var(--radius-button);background:var(--sema-color-background-secondary);font-size:14px;font-weight:600}
+.dir:hover{background:var(--sema-color-hover-background-secondary)}
+.crumb:focus-visible,.dir:focus-visible{box-shadow:var(--focus-ring)}

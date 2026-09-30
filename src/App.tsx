@@ -9,6 +9,8 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { micromark } from "micromark";
+import { gfm, gfmHtml } from "micromark-extension-gfm";
 import { Badge, Button, IconButton, Input, Switch, Tag } from "./ds/components.js";
 import { cleanTags, maxMediaCount, mergeTimelineItems, parseTimelineData, type TimelineData, type TimelineItem, type TimelineMedia } from "./data";
 
@@ -22,7 +24,20 @@ function Glyph({ name, size = 16 }: { name: string; size?: number }) {
 
 function monthDay(date: string) {
   const [, month, day] = date.split("-");
-  return month && day ? `${Number(month)}월 ${Number(day)}일` : "";
+  return month && day ? `${Number(month)}월 ${Number(day)}일` : month ? `${Number(month)}월` : "";
+}
+
+// Obsidian에서 동기화한 Markdown 본문. micromark는 원시 HTML을 이스케이프하고 위험한 링크(javascript: 등)를 걸러낸다.
+const apiBase = `${import.meta.env.BASE_URL}api/`;
+function renderMarkdown(markdown: string) {
+  // 서버가 만든 첨부 경로(vault/…)는 API 기준 상대 경로라 앞에 API 경로를 붙인다.
+  const html = micromark(markdown.replace(/\]\(vault\//g, `](${apiBase}vault/`), { extensions: [gfm()], htmlExtensions: [gfmHtml()] });
+  return html.replace(/<img /g, '<img loading="lazy" ').replace(/<a href=/g, '<a target="_blank" rel="noopener noreferrer" href=');
+}
+
+function MarkdownBody({ markdown }: { markdown: string }) {
+  const html = useMemo(() => renderMarkdown(markdown), [markdown]);
+  return <div className="md-body" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 // data.json의 상대 경로는 data.json 위치를 기준으로 해석한다.
@@ -166,7 +181,7 @@ function EditableText({ value, edit, multiline, label, onSave, children }: {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-// 연도만 있는 날짜(YYYY)도 표현할 수 있게 연도 입력과 월·일 선택으로 나눈다.
+// 연도만(YYYY), 월까지(YYYY-MM) 아는 날짜도 표현할 수 있게 연도 입력과 월·일 선택으로 나눈다.
 function DateEditor({ date, onSave }: { date: string; onSave: (date: string) => Promise<boolean> }) {
   const [y, m = "", d = ""] = date.split("-");
   const [year, setYear] = useState(y);
@@ -178,9 +193,9 @@ function DateEditor({ date, onSave }: { date: string; onSave: (date: string) => 
   const commit = (next: { year?: string; month?: string; day?: string }) => {
     const v = { year, month, day, ...next };
     if (!/^\d{4}$/.test(v.year)) return setHint("연도는 네 자리 숫자로 입력해 주세요.");
-    if (!v.month !== !v.day) return setHint("월과 일을 모두 선택하거나 모두 비워 주세요.");
+    if (v.day && !v.month) return setHint("일을 고르려면 월도 선택해 주세요.");
     setHint("");
-    const value = v.month ? `${v.year}-${v.month}-${v.day}` : v.year;
+    const value = v.month ? (v.day ? `${v.year}-${v.month}-${v.day}` : `${v.year}-${v.month}`) : v.year;
     if (value !== date) void onSave(value);
   };
   const select = (value: string, set: (v: string) => void, key: "month" | "day", count: number, unit: string) => (
@@ -282,7 +297,7 @@ function DragScroll({ children }: { children: ReactNode }) {
   );
 }
 
-type Entry = TimelineItem & { key: string; themeName: string };
+type Entry = TimelineItem & { key: string; themeName: string; readOnly: boolean };
 
 function MobileView({ data, message, themes, theme, pick, total, q, setQ, tag, setTag, cloud, list, sel, idx, setSelKey, dark, setDark, heading }: {
   data?: TimelineData; message: string; themes: TimelineData["themes"]; theme: string; pick: (id: string) => void; total: number;
@@ -343,11 +358,15 @@ function MobileView({ data, message, themes, theme, pick, total, q, setQ, tag, s
         <div className="m-grab" />
         <div className="m-sheet-top"><IconButton label="닫기" size="md" icon={<Glyph name="x" size={20} />} onClick={() => setSelKey(null)} /></div>
         {sel && <div className="m-sheet-in" key={sel.key}>
-          <Badge tone="accent" style={{ color: "var(--base-color-white)" }}>{sel.themeName}</Badge>
+          <div className="badges"><Badge tone="accent" style={{ color: "var(--base-color-white)" }}>{sel.themeName}</Badge>{sel.readOnly && <Badge tone="wash">Obsidian</Badge>}</div>
           <h2>{sel.title}</h2>
           <div className="date">{sel.date.slice(0, 4)}년 {monthDay(sel.date)}</div>
-          {sel.media ? sel.media.map((m) => <MediaDetail key={m.src} m={m} title={sel.title} />) : <div style={{ height: 24 }} />}
-          <p className="body">{sel.body ?? sel.description}</p>
+          {sel.bodyFormat === "markdown" && sel.body
+            ? <><div style={{ height: 24 }} /><MarkdownBody markdown={sel.body} /></>
+            : <>
+              {sel.media ? sel.media.map((m) => <MediaDetail key={m.src} m={m} title={sel.title} />) : <div style={{ height: 24 }} />}
+              <p className="body">{sel.body ?? sel.description}</p>
+            </>}
           {sel.sourceUrl && <Button variant="secondary" size="md" fullWidth iconEnd={<Glyph name="arrow-right" />} onClick={() => window.open(sel.sourceUrl, "_blank", "noopener,noreferrer")}>출처 보기</Button>}
           {sel.tags.length > 0 && <div className="m-sec">
             <div className="m-lbl">태그</div>
@@ -363,6 +382,164 @@ function MobileView({ data, message, themes, theme, pick, total, q, setQ, tag, s
   );
 }
 
+// ---- 설정 화면 (/settings) ----
+
+type SyncReport = { notes: number; synced: number; skipped: { path: string; reason: string }[]; tags: [string, number][]; error?: string };
+type SyncSource = { themeId: string; name: string; path: string; ignoreTags: string[]; syncedAt?: string; report?: SyncReport };
+
+const getJson = async (path: string) => {
+  const response = await fetch(`${apiBase}${path}`, { cache: "no-cache" });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
+  return result;
+};
+const formatTime = (iso?: string) => (iso ? new Date(iso).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : "아직 없음");
+
+function SourceRow({ source, edit, onAction }: { source: SyncSource; edit: boolean; onAction: (action: () => Promise<unknown>) => Promise<boolean> }) {
+  const [ignore, setIgnore] = useState(source.ignoreTags.join(", "));
+  useEffect(() => setIgnore(source.ignoreTags.join(", ")), [source.ignoreTags.join(",")]);
+  const report = source.report;
+  const path = `settings/sources/${source.themeId}`;
+  const addIgnore = (tag: string) => setIgnore((current) => cleanTags([...current.split(","), tag]).join(", "));
+  return (
+    <div className="src">
+      <div className="src-head">
+        <div className="src-title"><strong>{source.name}</strong><span className="src-path">vault/{source.path.normalize("NFC")}</span></div>
+        <Button variant="secondary" size="sm" disabled={!edit} onClick={() => onAction(() => api("POST", `${path}/sync`))}>지금 동기화</Button>
+        <Button variant="ghost" size="sm" disabled={!edit} onClick={() => {
+          if (window.confirm(`"${source.name}" 동기화를 해제할까요?\n가져온 사건 ${report?.synced ?? 0}개가 타임라인에서 사라집니다. Obsidian vault는 바뀌지 않습니다.`)) void onAction(() => api("DELETE", path));
+        }}>삭제</Button>
+      </div>
+      <p className="src-meta">
+        노트 {report?.notes ?? 0}개 중 {report?.synced ?? 0}개 동기화 · 마지막 동기화 {formatTime(source.syncedAt)}
+      </p>
+      {report?.error && <p className="notice error" role="alert">동기화 오류: {report.error}</p>}
+      {(report?.skipped.length ?? 0) > 0 && (
+        <details className="src-skipped">
+          <summary>건너뛴 노트 {report!.skipped.length}개</summary>
+          <ul>{report!.skipped.map((s) => <li key={s.path}><code>{s.path}</code> — {s.reason}</li>)}</ul>
+        </details>
+      )}
+      <div className="src-ignore">
+        <Input placeholder="무시할 태그 (쉼표로 구분)" aria-label="무시할 태그" value={ignore} fullWidth disabled={!edit}
+          onChange={(event: { target: { value: string } }) => setIgnore(event.target.value)} />
+        <Button variant="secondary" size="sm" disabled={!edit || ignore === source.ignoreTags.join(", ")}
+          onClick={() => onAction(() => api("PATCH", path, JSON.stringify({ ignoreTags: cleanTags(ignore.split(",")) })))}>저장</Button>
+      </div>
+      {(report?.tags.length ?? 0) > 0 && (
+        <div className="src-tags">
+          <span className="src-hint">발견된 태그 (눌러서 무시 목록에 추가)</span>
+          {report!.tags.slice(0, 40).map(([t, n]) => (
+            <Tag key={t} selected={source.ignoreTags.includes(t)} onClick={edit ? () => addIgnore(t) : undefined}>#{t} {n}</Tag>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsView({ edit, importing, runImport, resetAll, onChanged }: {
+  edit: boolean; importing: boolean; runImport: () => void; resetAll: () => void; onChanged: () => Promise<void>;
+}) {
+  const [sources, setSources] = useState<SyncSource[]>([]);
+  const [mounted, setMounted] = useState<boolean>();
+  const [browse, setBrowse] = useState<{ path: string; dirs: { name: string; path: string }[] }>({ path: "", dirs: [] });
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const load = useCallback(async () => {
+    try {
+      const result = await getJson("settings/sources");
+      setMounted(result.mounted);
+      setSources(result.sources);
+    } catch (e) {
+      setError(`설정을 불러오지 못했습니다: ${e instanceof Error ? e.message : e}`);
+    }
+  }, []);
+  const open = async (path: string) => {
+    try {
+      const result = await getJson(`settings/vault?path=${encodeURIComponent(path)}`);
+      setBrowse({ path: result.path, dirs: result.dirs });
+      setName((result.path.split("/").at(-1) ?? "").normalize("NFC"));
+    } catch (e) {
+      setError(`폴더를 열지 못했습니다: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+  useEffect(() => {
+    void load().then(() => open(""));
+    const timer = window.setInterval(load, 5_000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+  // 쓰기 작업 공통: 실패하면 메시지를 보여 주고, 끝나면 목록과 타임라인을 다시 읽는다.
+  const onAction = async (action: () => Promise<unknown>) => {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return false;
+    } finally {
+      await load();
+      await onChanged();
+      setBusy(false);
+    }
+  };
+  const synced = new Set(sources.map((s) => s.path));
+  // 경로는 서버의 실제 파일 이름(macOS에서 온 NFD일 수 있음) 그대로 주고받고, 화면에는 NFC로 보여 준다.
+  const crumbs = browse.path ? browse.path.split("/") : [];
+
+  return (
+    <div className="settings">
+      <p className="eyebrow">설정</p>
+      <h1 className="h-title">설정</h1>
+      {!edit && <p className="notice">보기 전용입니다. LNB의 <strong>편집 허용</strong>을 켜면 아래 작업을 할 수 있습니다.</p>}
+      {error && <p className="notice error" role="alert">{error}</p>}
+
+      <section className="set-sec">
+        <h2>데이터 가져오기</h2>
+        <p className="set-desc">서버 import 디렉터리의 <code>data.json</code>을 가져오거나, 저장된 데이터를 초기화합니다. 초기화해도 Obsidian에서 동기화하는 테마는 남습니다.</p>
+        <div className="set-actions">
+          <Button variant="secondary" size="sm" disabled={!edit || importing} onClick={runImport}>{importing ? "import 중…" : "import"}</Button>
+          <Button variant="ghost" size="sm" disabled={!edit || importing} onClick={resetAll}>reset</Button>
+        </div>
+      </section>
+
+      <section className="set-sec">
+        <h2>Obsidian 동기화</h2>
+        <p className="set-desc">vault의 디렉터리를 테마로 등록하면 노트가 사건으로 들어오고, 노트를 고치면 자동으로 반영됩니다. 동기화한 테마와 사건은 이 화면에서 동기화를 해제하는 것 말고는 수정하거나 삭제할 수 없습니다.</p>
+        {mounted === false && <p className="notice warning">Obsidian vault가 마운트되지 않았습니다. 서버의 <code>VAULT_DIR</code>과 docker compose 볼륨을 확인하세요.</p>}
+        {sources.length === 0 && mounted && <p className="set-desc">동기화 중인 디렉터리가 없습니다.</p>}
+        {sources.map((source) => <SourceRow key={source.themeId} source={source} edit={edit && !busy} onAction={onAction} />)}
+
+        {mounted && (
+          <div className="src add">
+            <strong>디렉터리 추가</strong>
+            <div className="crumbs">
+              <button className="crumb" onClick={() => open("")}>vault</button>
+              {crumbs.map((part, i) => <span key={i}> / <button className="crumb" onClick={() => open(crumbs.slice(0, i + 1).join("/"))}>{part.normalize("NFC")}</button></span>)}
+            </div>
+            <div className="dirs">
+              {browse.dirs.length === 0 && <span className="src-hint">하위 폴더가 없습니다.</span>}
+              {browse.dirs.map((d) => <button key={d.path} className="dir" onClick={() => open(d.path)}>{d.name}{synced.has(d.path) ? " (동기화 중)" : ""}</button>)}
+            </div>
+            <div className="src-ignore">
+              <Input placeholder="테마 이름" aria-label="테마 이름" value={name} fullWidth disabled={!edit || !browse.path}
+                onChange={(event: { target: { value: string } }) => setName(event.target.value)} />
+              <Button size="sm" disabled={!edit || busy || !browse.path || synced.has(browse.path)}
+                onClick={() => onAction(() => api("POST", "settings/sources", JSON.stringify({ path: browse.path, name })))}>
+                {busy ? "동기화 중…" : "이 폴더 동기화"}
+              </Button>
+            </div>
+            {!browse.path && <span className="src-hint">동기화할 폴더를 위 목록에서 골라 들어가세요.</span>}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export default function App() {
   const [data, setData] = useState<TimelineData>();
   const [message, setMessage] = useState("");
@@ -374,6 +551,20 @@ export default function App() {
   const [edit, setEdit] = useState(false);
   const [importing, setImporting] = useState(false);
   const mobile = useMobile();
+  // 화면 경로: 타임라인(/)과 설정(/settings). 라이브러리 없이 history API로 전환한다.
+  const settingsPath = `${import.meta.env.BASE_URL}settings`;
+  const [route, setRoute] = useState<"timeline" | "settings">(() => (location.pathname === settingsPath ? "settings" : "timeline"));
+  useEffect(() => {
+    const onPop = () => setRoute(location.pathname === settingsPath ? "settings" : "timeline");
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  const go = (next: "timeline" | "settings") => {
+    setSelKey(null);
+    if (next === route) return;
+    history.pushState(null, "", next === "settings" ? settingsPath : import.meta.env.BASE_URL);
+    setRoute(next);
+  };
   const [lnbW, setLnbW] = useState(() => Number(localStorage.getItem("chrono-lnb")) || defaultSidebarWidth);
 
   useEffect(() => localStorage.setItem("chrono-lnb", String(lnbW)), [lnbW]);
@@ -422,7 +613,7 @@ export default function App() {
 
   const themes = data?.themes ?? [];
   const inTheme = mergeTimelineItems(themes.filter((t) => theme === "all" || t.id === theme))
-    .map(({ theme: t, item }) => ({ key: `${t.id}/${item.id}`, themeName: t.name, ...item }));
+    .map(({ theme: t, item }) => ({ key: `${t.id}/${item.id}`, themeName: t.name, readOnly: t.source === "obsidian", ...item }));
   const cloud = useMemo(() => {
     const counts = new Map<string, number>();
     inTheme.forEach((e) => e.tags.forEach((t) => counts.set(t, (counts.get(t) ?? 0) + 1)));
@@ -433,7 +624,7 @@ export default function App() {
     && (!needle || [e.title, e.description, e.body ?? "", e.date, ...e.tags].some((t) => t.toLocaleLowerCase("ko-KR").includes(needle))));
   const idx = list.findIndex((e) => e.key === selKey);
   const sel = idx >= 0 ? list[idx] : null;
-  const pick = (value: string) => { setTheme(value); setSelKey(null); setTag(null); };
+  const pick = (value: string) => { setTheme(value); setSelKey(null); setTag(null); go("timeline"); };
   const heading = theme === "all" ? "전체 타임라인" : themes.find((t) => t.id === theme)?.name ?? "타임라인";
   const total = themes.reduce((count, t) => count + t.items.length, 0);
   const removeTheme = (t: { id: string; name: string; items: unknown[] }) => {
@@ -473,6 +664,21 @@ export default function App() {
     void mutate(() => api("POST", `${itemPath(key)}/media`, file, file.type || "application/octet-stream"));
   };
 
+  // Obsidian 사건은 편집 허용이어도 고칠 수 없다. Markdown 본문은 이미지가 본문 안에 있어 미디어 블록을 따로 그리지 않는다.
+  const ed = edit && !sel?.readOnly;
+  const markdown = sel?.bodyFormat === "markdown" && Boolean(sel.body);
+
+  if (mobile && route === "settings") {
+    return (
+      <div className="m">
+        <div className="m-head"><div className="m-word">Timeline</div></div>
+        <div className="m-title">
+          <p className="m-empty">설정은 데스크톱에서 사용할 수 있습니다.</p>
+          <Button variant="secondary" size="md" onClick={() => go("timeline")}>타임라인으로</Button>
+        </div>
+      </div>
+    );
+  }
   if (mobile) {
     return <MobileView data={data} message={message} themes={themes} theme={theme} pick={pick} total={total} q={q} setQ={setQ}
       tag={tag} setTag={(t) => { setTag(t); setSelKey(null); }} cloud={cloud} list={list} sel={sel} idx={idx} setSelKey={setSelKey}
@@ -484,9 +690,13 @@ export default function App() {
       <nav className="lnb" style={{ width: lnbW }} aria-label="타임라인 탐색">
         <div className="lnb-head">
           <div className="wordmark">Timeline</div>
-          <IconButton label={dark ? "라이트 모드" : "다크 모드"} size="sm" variant="circle" icon={<Glyph name={dark ? "sun" : "moon"} size={18} />} onClick={() => setDark(!dark)} />
+          <div className="head-btns">
+            <IconButton label={dark ? "라이트 모드" : "다크 모드"} size="sm" variant="circle" icon={<Glyph name={dark ? "sun" : "moon"} size={18} />} onClick={() => setDark(!dark)} />
+            <IconButton label="설정" size="sm" variant={route === "settings" ? "accent" : "circle"} aria-pressed={route === "settings"}
+              icon={<Glyph name="settings" size={18} />} onClick={() => go(route === "settings" ? "timeline" : "settings")} />
+          </div>
         </div>
-        <button className={`all${theme === "all" ? " on" : ""}`} onClick={() => pick("all")}>
+        <button className={`all${theme === "all" && route === "timeline" ? " on" : ""}`} onClick={() => pick("all")}>
           <span className="ico"><Glyph name="grid-2x2" size={16} /></span>
           <span className="t">전체</span><span className="n">{total}</span>
         </button>
@@ -495,10 +705,10 @@ export default function App() {
           <div className="themes">
             {themes.map((t) => (
               <div key={t.id} className="th-row">
-                <button className={`th${theme === t.id ? " on" : ""}`} onClick={() => pick(t.id)}>
+                <button className={`th${theme === t.id && route === "timeline" ? " on" : ""}`} onClick={() => pick(t.id)} title={t.source === "obsidian" ? "Obsidian에서 동기화하는 테마(읽기 전용)" : undefined}>
                   <span className="sw" /><span className="t">{t.name}</span><span className="n">{t.items.length}</span>
                 </button>
-                {edit && <IconButton label={`${t.name} 테마 삭제`} size="sm" variant="ghost" icon={<Glyph name="trash-2" />} onClick={() => removeTheme(t)} />}
+                {edit && t.source !== "obsidian" && <IconButton label={`${t.name} 테마 삭제`} size="sm" variant="ghost" icon={<Glyph name="trash-2" />} onClick={() => removeTheme(t)} />}
               </div>
             ))}
           </div>
@@ -512,10 +722,6 @@ export default function App() {
           </div>
           <div className="edit-row">
             <Switch checked={edit} onChange={setEdit} label="편집 허용" />
-            {edit && <div className="edit-actions-lnb">
-              <Button variant="secondary" size="sm" disabled={importing} onClick={runImport}>{importing ? "import 중…" : "import"}</Button>
-              <Button variant="ghost" size="sm" disabled={importing} onClick={resetAll}>reset</Button>
-            </div>}
           </div>
           <Input placeholder="제목, 내용, 날짜" aria-label="타임라인 검색" value={q} onChange={(event: { target: { value: string } }) => setQ(event.target.value)} iconStart={<Glyph name="search" />} fullWidth />
         </div>
@@ -524,7 +730,7 @@ export default function App() {
       <main className={`main${sel ? " open" : ""}`}>
         <div className="wrap">
           {message && <p className={`notice ${data ? "warning" : "error"}`} role="alert">{message}</p>}
-          {!data ? !message && <p className="notice" role="status">타임라인을 불러오는 중입니다.</p> : <>
+          {route === "settings" ? <SettingsView edit={edit} importing={importing} runImport={runImport} resetAll={resetAll} onChanged={refresh} /> : !data ? !message && <p className="notice" role="status">타임라인을 불러오는 중입니다.</p> : <>
             <p className="eyebrow">{list.length}개 이벤트{tag && ` · #${tag}`}{q && ` · “${q}” 검색 결과`}</p>
             <h1 className="h-title">{heading}</h1>
             <div className="tl">
@@ -543,7 +749,7 @@ export default function App() {
                       <div className="chips">{e.tags.slice(0, 3).map((t) => <span key={t} className="hash">#{t}</span>)}</div>
                     </div>
                   </button>
-                  {edit && <IconButton label={`${e.title} 사건 삭제`} size="sm" variant="overlay" className="card-x" icon={<Glyph name="trash-2" />} onClick={() => removeItem(e)} />}
+                  {edit && !e.readOnly && <IconButton label={`${e.title} 사건 삭제`} size="sm" variant="overlay" className="card-x" icon={<Glyph name="trash-2" />} onClick={() => removeItem(e)} />}
                   </div>
                 </div>
               ))}
@@ -554,36 +760,38 @@ export default function App() {
       <aside className={`panel${sel ? " open" : ""}`} aria-hidden={!sel}>
         {sel && <div className="panel-in" key={sel.key}>
           <div className="panel-top"><IconButton label="닫기" size="sm" icon={<Glyph name="x" size={18} />} onClick={() => setSelKey(null)} /></div>
-          <Badge tone="accent" style={{ color: "var(--base-color-white)" }}>{sel.themeName}</Badge>
-          <EditableText value={sel.title} edit={edit} label="제목" onSave={(title) => mutate(() => patchItem(sel.key, { title }))}>
+          <div className="badges"><Badge tone="accent" style={{ color: "var(--base-color-white)" }}>{sel.themeName}</Badge>{sel.readOnly && <Badge tone="wash">Obsidian</Badge>}</div>
+          <EditableText value={sel.title} edit={ed} label="제목" onSave={(title) => mutate(() => patchItem(sel.key, { title }))}>
             <h2>{sel.title}</h2>
           </EditableText>
-          {edit
+          {ed
             ? <DateEditor date={sel.date} onSave={(date) => mutate(() => patchItem(sel.key, { date }))} />
             : <div className="date">{sel.date.slice(0, 4)}년 {monthDay(sel.date)}</div>}
-          {sel.media?.map((m, i) => (
+          {!markdown && sel.media?.map((m, i) => (
             <MediaDetail key={m.src} m={m} title={sel.title}
-              onRemove={edit ? () => { if (window.confirm("이 미디어를 삭제할까요?")) void mutate(() => api("DELETE", `${itemPath(sel.key)}/media/${i}`)); } : undefined} />
+              onRemove={ed ? () => { if (window.confirm("이 미디어를 삭제할까요?")) void mutate(() => api("DELETE", `${itemPath(sel.key)}/media/${i}`)); } : undefined} />
           ))}
-          {edit && (sel.media?.length ?? 0) < maxMediaCount && <div className="media-add"><MediaAdder onAdd={(file) => addMedia(sel.key, file)} /></div>}
-          {!sel.media && !edit && <div style={{ height: 28 }} />}
-          {edit && <div className="summary-edit">
+          {ed && (sel.media?.length ?? 0) < maxMediaCount && <div className="media-add"><MediaAdder onAdd={(file) => addMedia(sel.key, file)} /></div>}
+          {(markdown || !sel.media) && !ed && <div style={{ height: 28 }} />}
+          {ed && <div className="summary-edit">
             <div className="lbl" style={{ paddingLeft: 0 }}>카드 요약</div>
-            <EditableText value={sel.description} edit={edit} multiline label="카드 요약" onSave={(description) => mutate(() => patchItem(sel.key, { description }))}>
+            <EditableText value={sel.description} edit={ed} multiline label="카드 요약" onSave={(description) => mutate(() => patchItem(sel.key, { description }))}>
               <p className="summary">{sel.description}</p>
             </EditableText>
             <div className="lbl" style={{ paddingLeft: 0 }}>상세 내용</div>
           </div>}
-          <EditableText value={sel.body ?? sel.description} edit={edit} multiline label="내용" onSave={(body) => mutate(() => patchItem(sel.key, { body }))}>
-            <p className="body">{sel.body ?? sel.description}</p>
-          </EditableText>
+          {markdown ? <MarkdownBody markdown={sel.body!} /> : (
+            <EditableText value={sel.body ?? sel.description} edit={ed} multiline label="내용" onSave={(body) => mutate(() => patchItem(sel.key, { body }))}>
+              <p className="body">{sel.body ?? sel.description}</p>
+            </EditableText>
+          )}
           {sel.sourceUrl && <Button variant="secondary" size="sm" iconEnd={<Glyph name="arrow-right" />} onClick={() => window.open(sel.sourceUrl, "_blank", "noopener,noreferrer")}>출처 보기</Button>}
-          {(sel.tags.length > 0 || edit) && <div className="sec">
+          {(sel.tags.length > 0 || ed) && <div className="sec">
             <div className="lbl" style={{ paddingLeft: 0 }}>태그</div>
-            <div className="cloud">{sel.tags.map((t) => edit
+            <div className="cloud">{sel.tags.map((t) => ed
               ? <Tag key={t} onRemove={() => mutate(() => patchItem(sel.key, { tags: sel.tags.filter((x) => x !== t) }))}>#{t}</Tag>
               : <Tag key={t} selected={tag === t} onClick={() => { setTag(t); setSelKey(null); }}>#{t}</Tag>)}</div>
-            {edit && <TagAdder onAdd={(tags) => mutate(() => patchItem(sel.key, { tags: [...sel.tags, ...tags] }))} />}
+            {ed && <TagAdder onAdd={(tags) => mutate(() => patchItem(sel.key, { tags: [...sel.tags, ...tags] }))} />}
           </div>}
           <div className="sec nav">
             <Button variant="ghost" size="sm" disabled={idx <= 0} onClick={() => setSelKey(list[idx - 1].key)}>이전</Button>

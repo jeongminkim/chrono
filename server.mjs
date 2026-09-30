@@ -1,8 +1,10 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import { extname, join, resolve, sep } from "node:path";
+import { basename, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { handleInternal } from "./internal-api.mjs";
+import { createSyncer } from "./obsidian.mjs";
 import { addMedia, deleteItem, importDir, resetStore, deleteTheme, mediaNamePattern, openStore, readTimeline, removeMedia, revision, StoreError, updateItem } from "./store.mjs";
 
 const projectDir = fileURLToPath(new URL(".", import.meta.url));
@@ -18,7 +20,13 @@ const mimeTypes = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
+  ".pdf": "application/pdf",
+  ".mp4": "video/mp4",
+  ".mov": "video/quicktime",
+  ".webm": "video/webm",
 };
+// vault 첨부 중 브라우저에서 바로 열어도 되는 형식. 나머지(html 등)는 실행되지 않도록 다운로드로만 준다.
+const inlineVaultTypes = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".svg", ".pdf", ".mp4", ".mov", ".webm"]);
 
 function safePath(root, relativePath) {
   const path = resolve(root, relativePath);
@@ -31,12 +39,12 @@ const securityHeaders = {
   "x-content-type-options": "nosniff",
 };
 
-async function sendFile(request, response, filePath, cacheControl) {
+async function sendFile(request, response, filePath, cacheControl, { download = false } = {}) {
   try {
     const fileStat = await stat(filePath);
     if (!fileStat.isFile()) throw new Error();
     const etag = `"${fileStat.size.toString(16)}-${Math.trunc(fileStat.mtimeMs).toString(16)}"`;
-    const type = mimeTypes[extname(filePath).toLowerCase()] || "application/octet-stream";
+    const type = download ? "application/octet-stream" : mimeTypes[extname(filePath).toLowerCase()] || "application/octet-stream";
     const headers = {
       ...securityHeaders,
       // 가져온 SVG 안의 스크립트가 실행되지 않도록 격리한다.
@@ -44,6 +52,7 @@ async function sendFile(request, response, filePath, cacheControl) {
       "cache-control": cacheControl,
       "content-length": fileStat.size,
       "content-type": type,
+      ...(download && { "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(basename(filePath))}` }),
       etag,
     };
     if (request.headers["if-none-match"] === etag) {
@@ -152,17 +161,61 @@ async function handleWrite(request, response, store, pathname) {
   }
 }
 
+// 설정 화면의 Obsidian 동기화 API. 쓰기는 다른 편집 API와 같은 CSRF 방지 확인을 거친다.
+const sourceRoute = /^\/api\/settings\/sources(?:\/([^/]+)(?:\/(sync))?)?$/;
+async function handleSettings(request, response, store, syncer, url) {
+  const { pathname } = url;
+  const method = request.method;
+  try {
+    if (pathname === "/api/settings/vault" && method === "GET") {
+      sendJson(response, 200, syncer.mounted ? { mounted: true, ...(await syncer.listDirs(url.searchParams.get("path") ?? "")) } : { mounted: false, path: "", dirs: [] });
+      return;
+    }
+    const match = sourceRoute.exec(pathname);
+    if (!match) {
+      sendJson(response, 404, { error: "없는 경로입니다." });
+      return;
+    }
+    const [, themeId, action] = match;
+    if (method === "GET" && !themeId) {
+      sendJson(response, 200, { mounted: syncer.mounted, sources: syncer.list() });
+      return;
+    }
+    if (!allowWrite(request, response)) return;
+    const body = method === "GET" || method === "DELETE" ? {} : JSON.parse((await readBody(request, 64 * 1024)).toString("utf8") || "{}");
+    if (method === "POST" && !themeId) sendJson(response, 201, await syncer.add(body));
+    else if (method === "POST" && action) sendJson(response, 200, await syncer.sync(themeId));
+    else if (method === "PATCH" && themeId && !action) sendJson(response, 200, await syncer.update(themeId, body));
+    else if (method === "DELETE" && themeId && !action) {
+      syncer.remove(themeId);
+      sendJson(response, 200, { revision: revision(store) });
+    } else sendJson(response, 404, { error: "없는 경로입니다." });
+  } catch (error) {
+    if (error instanceof SyntaxError) return sendJson(response, 400, { error: "JSON 본문이 올바르지 않습니다." });
+    if (!(error instanceof StoreError)) console.error(error);
+    sendJson(response, error instanceof StoreError ? error.status : 500, { error: error instanceof StoreError ? error.message : "처리하지 못했습니다." });
+  }
+}
+
 export function createApp({
   distDir = process.env.DIST_DIR || resolve(projectDir, "dist"),
   store = openStore(),
   importPath = process.env.IMPORT_DIR || resolve(projectDir, "import"),
+  vaultDir = process.env.VAULT_DIR,
+  syncer = createSyncer(store, vaultDir),
 } = {}) {
-  return createServer(async (request, response) => {
+  // 시작하면 모든 Obsidian 소스를 동기화하고 감시한다. 서버를 닫으면 감시도 멈춘다.
+  void syncer.start();
+  const server = createServer(async (request, response) => {
     const pathname = new URL(request.url || "/", "http://localhost").pathname;
 
     if (pathname === "/healthz") {
       response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
       response.end("ok");
+      return;
+    }
+    if (pathname.startsWith("/internal/")) {
+      await handleInternal(request, response, store);
       return;
     }
     if (pathname === "/api/reset" && request.method === "POST") {
@@ -174,6 +227,10 @@ export function createApp({
     }
     if (pathname === "/api/import" && request.method === "POST") {
       await handleImport(request, response, store, importPath);
+      return;
+    }
+    if (pathname.startsWith("/api/settings/")) {
+      await handleSettings(request, response, store, syncer, new URL(request.url || "/", "http://localhost"));
       return;
     }
     if (pathname.startsWith("/api/themes/") && ["DELETE", "PATCH", "POST"].includes(request.method || "")) {
@@ -189,6 +246,20 @@ export function createApp({
       sendTimeline(request, response, store);
       return;
     }
+    if (pathname.startsWith("/api/vault/")) {
+      // 동기화한 노트가 참조하는 vault 파일만 제공한다(그 밖의 vault 파일은 404).
+      let vaultPath;
+      try {
+        vaultPath = pathname.slice("/api/vault/".length).split("/").map(decodeURIComponent).join("/");
+      } catch {
+        response.writeHead(400).end();
+        return;
+      }
+      const filePath = syncer.filePath(vaultPath);
+      if (filePath) await sendFile(request, response, filePath, "no-cache", { download: !inlineVaultTypes.has(extname(filePath).toLowerCase()) });
+      else response.writeHead(404).end();
+      return;
+    }
     if (pathname.startsWith("/api/")) {
       const name = pathname.slice("/api/media/".length);
       if (pathname.startsWith("/api/media/") && mediaNamePattern.test(name)) {
@@ -199,7 +270,8 @@ export function createApp({
 
     let filePath;
     try {
-      filePath = safePath(distDir, decodeURIComponent(pathname.slice(1)) || "index.html");
+      // /settings는 화면 안의 경로라 index.html을 준다.
+      filePath = safePath(distDir, pathname === "/settings" ? "index.html" : decodeURIComponent(pathname.slice(1)) || "index.html");
     } catch {
       response.writeHead(400).end();
       return;
@@ -210,6 +282,8 @@ export function createApp({
     }
     await sendFile(request, response, filePath, pathname.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache");
   });
+  server.on("close", () => syncer.stop());
+  return server;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

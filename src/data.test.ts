@@ -51,6 +51,20 @@ describe("parseTimelineData", () => {
     assert.throws(() => withMedia([image(1), { type: "image", src: "images/2.jpg" }]), /media\[1\]\.alt/);
   });
 
+  it("YYYY-MM 날짜와 Obsidian 필드(source, bodyFormat)를 받는다", () => {
+    const parse = (item: object, theme: object = {}) => parseTimelineData(JSON.stringify({ version: 1, themes: [{ id: "t", name: "T", ...theme, items: [{ id: "a", date: "2020", title: "t", description: "d", ...item }] }] })).themes[0];
+    assert.equal(parse({ date: "2024-05" }).items[0].date, "2024-05");
+    assert.throws(() => parse({ date: "2024-13" }), /YYYY-MM/);
+    assert.throws(() => parse({ date: "2024-5" }), /YYYY-MM/);
+    assert.equal(parse({ bodyFormat: "markdown", body: "# x" }).items[0].bodyFormat, "markdown");
+    assert.equal(parse({ bodyFormat: "html" }).items[0].bodyFormat, undefined);
+    assert.equal(parse({}, { source: "obsidian" }).source, "obsidian");
+    assert.equal(parse({}, { source: "other" }).source, undefined);
+    assert.deepEqual(mergeTimelineItems([{ id: "t", name: "T", items: [
+      { id: "b", date: "2024-05-01", title: "", description: "", tags: [] }, { id: "a", date: "2024-05", title: "", description: "", tags: [] },
+    ] }]).map(({ item }) => item.id), ["a", "b"]);
+  });
+
   it("YouTube URL에서 동영상 ID를 찾는다", () => {
     for (const url of [
       "https://www.youtube.com/watch?v=FlpstXNjImY&t=10",

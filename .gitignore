@@ -12,3 +12,4 @@ coverage/
 export/
 import/*
 !import/HOWTO_MAKE_DATA.md
+!import/API_SPEC.md

@@ -7,6 +7,8 @@ services:
       - chrono-store:/var/lib/chrono
       # import 후 원본을 자동 삭제하므로 쓰기 가능으로 마운트한다.
       - ./import:/import
+      # Obsidian vault(읽기 전용). 설정 화면에서 고른 디렉터리를 테마로 동기화한다.
+      - /home/kyo/syncthing/obsidian/personal:/vault:ro
     expose:
       - "3000"
     networks:

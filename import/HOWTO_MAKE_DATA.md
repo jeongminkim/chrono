@@ -8,7 +8,7 @@
 
 - `theme.id`, `item.id`: 영문 소문자, 숫자, 하이픈으로 만든 고유 ID
 - `theme.name`: 선택 상자에 표시할 테마명
-- `item.date`: `YYYY` 또는 `YYYY-MM-DD`
+- `item.date`: `YYYY`, `YYYY-MM` 또는 `YYYY-MM-DD` (연도만, 월까지만 아는 사건도 쓸 수 있음)
 - `item.title`, `item.description`: HTML이 아닌 일반 텍스트. `description`은 카드 요약
 - `item.body`: 선택 필드. 상세 패널에 표시할 설명이며 생략하면 `description` 사용
 - `item.tags`: 선택 필드. 태그 필터와 검색에 사용하는 문자열 배열
@@ -110,7 +110,7 @@ YouTube는 `https://www.youtube.com/watch?v=ID`, `https://youtu.be/ID`, `/embed/
 JSON 외의 설명과 Markdown 코드 펜스는 출력하지 마라.
 모르는 사실, 날짜, 출처 URL을 만들지 마라.
 테마와 항목의 id는 영문 소문자, 숫자, 하이픈만 사용하고 각 범위에서 중복하지 마라.
-date는 YYYY 또는 YYYY-MM-DD 형식으로 쓰고 항목을 날짜 오름차순으로 정렬하라.
+date는 YYYY, YYYY-MM 또는 YYYY-MM-DD 형식으로 쓰고 항목을 날짜 오름차순으로 정렬하라.
 title, description, body에는 HTML을 넣지 마라. 검색에 유용한 핵심어를 tags 문자열 배열로 작성하라.
 이미지나 동영상은 media 배열에 최대 5개까지 넣는다. 첫 번째 항목이 대표 이미지다. 이미지는 {"type":"image","src","alt","caption"?}, 동영상은 {"type":"video","src","poster"?,"caption"?} 형식을 따르고, 한 사건 안에서 같은 src를 반복하지 마라.
 이미지 src는 data.json 기준 상대 경로(예: images/example.webp) 또는 https URL, 동영상 src는 YouTube URL 또는 https 동영상 파일 URL만 쓴다.
