@@ -8,8 +8,11 @@ RUN npm run build
 FROM node:22.22-alpine
 ENV NODE_ENV=production PORT=3000 STORE_DIR=/var/lib/chrono IMPORT_DIR=/import VAULT_DIR=/vault
 WORKDIR /app
+# 서버 런타임 의존성(썸네일용 sharp). Alpine(musl)용 바이너리를 받는다.
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
-COPY server.mjs store.mjs internal-api.mjs obsidian.mjs ./
+COPY server.mjs store.mjs internal-api.mjs obsidian.mjs thumbs.mjs ./
 COPY src/data.ts ./src/
 # named volume이 이 소유권을 이어받아 node 사용자가 DB와 미디어를 쓸 수 있다.
 RUN mkdir -p /var/lib/chrono /import && chown node:node /var/lib/chrono /import

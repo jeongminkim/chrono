@@ -5,6 +5,7 @@ import { existsSync, realpathSync, statSync, watch } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { basename, extname, join, posix, sep } from "node:path";
 import { isSynced, readTimeline, StoreError, transaction, writeItem } from "./store.mjs";
+import { vaultThumbKey } from "./thumbs.mjs";
 
 const displayableImages = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".svg"]);
 const knownKeys = new Set(["title", "date", "created", "updated", "allday", "tags", "url", "description", "summary", "aliases", "cssclasses"]);
@@ -268,7 +269,25 @@ export function createSyncer(store, vaultDir, { debounceMs = 2000, rescanMs = 5 
     const removeCover = store.db.prepare("DELETE FROM sync_covers WHERE theme_id = ? AND item_id = ?");
     for (const id of [...staleCovers, ...[...covers.keys()].filter((id) => !next.has(id))]) removeCover.run(themeId, id);
     store.db.prepare("UPDATE sync_sources SET synced_at = ?, report = ? WHERE theme_id = ?").run(new Date().toISOString(), JSON.stringify(report), themeId);
+    // 가로 500px을 넘는 첨부 이미지의 썸네일을 백그라운드에서 만든다(이미 있으면 건너뜀). "지금 동기화"로 빠진 것도 채워진다.
+    for (const file of files) {
+      try {
+        const real = join(root, file);
+        store.thumbs.add(vaultThumbKey(file, real), real);
+      } catch {}
+    }
     return report;
+  }
+
+  // 지금 어떤 소스도 참조하지 않는 vault 썸네일(파일이 바뀌었거나 동기화 해제)을 지운다.
+  function pruneThumbs() {
+    const keep = new Set();
+    for (const { vault_path: file } of store.db.prepare("SELECT DISTINCT vault_path FROM sync_files").all()) {
+      try {
+        keep.add(vaultThumbKey(file, join(root, file)));
+      } catch {}
+    }
+    store.thumbs.prune("v-", (key) => keep.has(key));
   }
 
   // 한 소스는 한 번에 하나만. 진행 중이면 끝난 뒤 한 번 더 돌린다.
@@ -384,6 +403,7 @@ export function createSyncer(store, vaultDir, { debounceMs = 2000, rescanMs = 5 
       unwatch(themeId);
       // 테마를 지우면 사건·sync_sources·sync_files가 함께 지워진다(FK cascade). vault는 건드리지 않는다.
       transaction(store, () => store.db.prepare("DELETE FROM themes WHERE id = ?").run(themeId));
+      pruneThumbs();
     },
     // 동기화한 노트가 참조하는 파일만 제공한다. 그 밖의 vault 파일은 없는 것으로 본다.
     filePath(vaultPath) {
@@ -401,8 +421,20 @@ export function createSyncer(store, vaultDir, { debounceMs = 2000, rescanMs = 5 
         await sync(themeId).catch(() => {});
         watchSource(themeId, path);
       }
-      rescan = setInterval(() => sources().forEach(({ themeId }) => sync(themeId).catch(() => {})), rescanMs);
+      pruneThumbs();
+      rescan = setInterval(async () => {
+        await Promise.all(sources().map(({ themeId }) => sync(themeId).catch(() => {})));
+        pruneThumbs();
+      }, rescanMs);
       rescan.unref();
+    },
+    // 썸네일 파일 경로(없으면 null). 서버가 ?thumb=1 요청에 쓴다.
+    thumbPath(vaultPath, realPath) {
+      try {
+        return store.thumbs.find(vaultThumbKey(vaultPath, realPath));
+      } catch {
+        return null;
+      }
     },
     stop() {
       clearInterval(rescan);

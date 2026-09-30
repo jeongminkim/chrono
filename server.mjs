@@ -5,6 +5,7 @@ import { basename, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { handleInternal } from "./internal-api.mjs";
 import { createSyncer } from "./obsidian.mjs";
+import { mediaThumbKey } from "./thumbs.mjs";
 import { addMedia, deleteItem, importDir, resetStore, setCover, deleteTheme, mediaNamePattern, openStore, readTimeline, removeMedia, revision, StoreError, updateItem } from "./store.mjs";
 
 const projectDir = fileURLToPath(new URL(".", import.meta.url));
@@ -191,7 +192,7 @@ async function handleSettings(request, response, store, syncer, url) {
     }
     const [, themeId, action] = match;
     if (method === "GET" && !themeId) {
-      sendJson(response, 200, { mounted: syncer.mounted, sources: syncer.list() });
+      sendJson(response, 200, { mounted: syncer.mounted, sources: syncer.list(), thumbsPending: store.thumbs.pending() });
       return;
     }
     if (!allowWrite(request, response)) return;
@@ -259,6 +260,7 @@ export function createApp({
       sendTimeline(request, response, store);
       return;
     }
+    const wantsThumb = new URL(request.url || "/", "http://localhost").searchParams.get("thumb") === "1";
     if (pathname.startsWith("/api/vault/")) {
       // 동기화한 노트가 참조하는 vault 파일만 제공한다(그 밖의 vault 파일은 404).
       let vaultPath;
@@ -269,14 +271,19 @@ export function createApp({
         return;
       }
       const filePath = syncer.filePath(vaultPath);
-      if (filePath) await sendFile(request, response, filePath, "no-cache", { download: !inlineVaultTypes.has(extname(filePath).toLowerCase()) });
-      else response.writeHead(404).end();
+      if (!filePath) response.writeHead(404).end();
+      // ?thumb=1: 가로 500px 썸네일이 있으면 그것을, 없으면 원본을 준다(이미지 뷰어는 원본을 요청한다).
+      else if (wantsThumb && syncer.thumbPath(vaultPath, filePath)) await sendFile(request, response, syncer.thumbPath(vaultPath, filePath), "no-cache");
+      else await sendFile(request, response, filePath, "no-cache", { download: !inlineVaultTypes.has(extname(filePath).toLowerCase()) });
       return;
     }
     if (pathname.startsWith("/api/")) {
       const name = pathname.slice("/api/media/".length);
       if (pathname.startsWith("/api/media/") && mediaNamePattern.test(name)) {
-        await sendFile(request, response, join(store.mediaDir, name), "public, max-age=31536000, immutable");
+        const thumb = wantsThumb && store.thumbs.find(mediaThumbKey(name));
+        // 썸네일을 아직 못 만들어 원본으로 대신할 때는 영구 캐시하지 않는다(나중에 썸네일로 바뀌도록).
+        await sendFile(request, response, thumb || join(store.mediaDir, name),
+          wantsThumb && !thumb ? "no-cache" : "public, max-age=31536000, immutable");
       } else response.writeHead(404).end();
       return;
     }

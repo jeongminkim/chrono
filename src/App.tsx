@@ -32,20 +32,28 @@ function monthDay(date: string) {
 // Obsidian에서 동기화한 Markdown 본문. micromark는 원시 HTML을 이스케이프하고 위험한 링크(javascript: 등)를 걸러낸다.
 const apiBase = `${import.meta.env.BASE_URL}api/`;
 function renderMarkdown(markdown: string) {
-  // 서버가 만든 첨부 경로(vault/…)는 API 기준 상대 경로라 앞에 API 경로를 붙인다.
+  // 서버가 만든 첨부 경로(vault/…)는 API 기준 상대 경로라 앞에 API 경로를 붙인다. 본문 이미지는 썸네일(?thumb=1)로 보여 준다.
   const html = micromark(markdown.replace(/\]\(vault\//g, `](${apiBase}vault/`), { extensions: [gfm()], htmlExtensions: [gfmHtml()] });
-  return html.replace(/<img /g, '<img loading="lazy" ').replace(/<a href=/g, '<a target="_blank" rel="noopener noreferrer" href=');
+  return html
+    .replace(new RegExp(`<img src="(${apiBase}vault/[^"]*)"`, "g"), '<img src="$1?thumb=1"')
+    .replace(/<img /g, '<img loading="lazy" ').replace(/<a href=/g, '<a target="_blank" rel="noopener noreferrer" href=');
 }
+const stripThumb = (url: string) => url.replace(/\?thumb=1$/, "");
+
+type ViewerImage = { src: string; alt: string };
 
 // coverSrc/onCover가 있으면 본문 이미지마다 대표 이미지 표시(현재 대표) 또는 지정 버튼을 붙인다.
-function MarkdownBody({ markdown, coverSrc, onCover }: { markdown: string; coverSrc?: string; onCover?: (src: string) => void }) {
+// onOpen이 있으면 이미지를 눌렀을 때 본문 이미지 전체(원본 주소)와 누른 순번을 넘긴다.
+function MarkdownBody({ markdown, coverSrc, onCover, onOpen }: {
+  markdown: string; coverSrc?: string; onCover?: (src: string) => void; onOpen?: (images: ViewerImage[], index: number) => void;
+}) {
   const html = useMemo(() => renderMarkdown(markdown), [markdown]);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!onCover || !ref.current) return;
     for (const img of ref.current.querySelectorAll("img")) {
       // 화면의 경로(/api/vault/…)를 저장된 미디어 경로(vault/…)로 되돌려 대표 이미지와 비교한다.
-      const raw = img.getAttribute("src") ?? "";
+      const raw = stripThumb(img.getAttribute("src") ?? "");
       const src = raw.startsWith(apiBase) ? raw.slice(apiBase.length) : raw;
       let wrap = img.parentElement?.classList.contains("md-img") ? img.parentElement : null;
       if (!wrap) {
@@ -74,14 +82,55 @@ function MarkdownBody({ markdown, coverSrc, onCover }: { markdown: string; cover
   return (
     <div ref={ref} className="md-body" dangerouslySetInnerHTML={{ __html: html }}
       onClick={(event) => {
-        const button = (event.target as HTMLElement).closest<HTMLElement>("[data-cover-src]");
-        if (button && onCover) onCover(button.dataset.coverSrc!);
+        const target = event.target as HTMLElement;
+        const button = target.closest<HTMLElement>("[data-cover-src]");
+        if (button && onCover) return onCover(button.dataset.coverSrc!);
+        if (target instanceof HTMLImageElement && onOpen) {
+          const imgs = [...ref.current!.querySelectorAll("img")];
+          onOpen(imgs.map((img) => ({ src: stripThumb(img.src), alt: img.alt })), imgs.indexOf(target));
+        }
       }} />
+  );
+}
+
+// 이미지 뷰어(원본). 여러 장이면 좌우 버튼과 ←/→ 키로 넘기고, Esc·배경 클릭으로 닫는다.
+function ImageViewer({ images, index, setIndex, onClose }: { images: ViewerImage[]; index: number; setIndex: (i: number) => void; onClose: () => void }) {
+  const many = images.length > 1;
+  const go = (step: number) => setIndex((index + step + images.length) % images.length);
+  useEffect(() => {
+    // 캡처 단계에서 처리해, 뷰어가 열려 있을 때 Esc가 상세 패널까지 닫지 않게 한다.
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      else if (many && event.key === "ArrowLeft") go(-1);
+      else if (many && event.key === "ArrowRight") go(1);
+      else return;
+      event.stopPropagation();
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  });
+  const image = images[index];
+  return (
+    <div className="viewer" role="dialog" aria-modal="true" aria-label="이미지 뷰어" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <img className="viewer-img" src={image.src} alt={image.alt} />
+      <div className="viewer-top">
+        {many && <span className="viewer-count">{index + 1} / {images.length}</span>}
+        <IconButton label="닫기" size="md" variant="overlay" icon={<Glyph name="x" size={20} />} onClick={onClose} />
+      </div>
+      {many && <>
+        <IconButton label="이전 이미지" size="lg" variant="overlay" className="viewer-prev" icon={<Glyph name="chevron-left" size={22} />} onClick={() => go(-1)} />
+        <IconButton label="다음 이미지" size="lg" variant="overlay" className="viewer-next" icon={<Glyph name="chevron-right" size={22} />} onClick={() => go(1)} />
+      </>}
+      {image.alt && <div className="viewer-cap">{image.alt}</div>}
+    </div>
   );
 }
 
 // data.json의 상대 경로는 data.json 위치를 기준으로 해석한다.
 const mediaUrl = (src: string) => new URL(src, new URL(dataUrl, document.baseURI)).href;
+// 서버에 저장된 이미지(media/…, vault/…)는 가로 500px 썸네일로 보여 준다. 썸네일이 없으면 서버가 원본을 준다.
+const thumbUrl = (src: string) => (/^(media|vault)\//.test(src) ? `${mediaUrl(src)}?thumb=1` : mediaUrl(src));
 
 // 쓰기 요청. 인증은 Nginx가 맡고, X-Chrono-Edit 헤더는 서버의 CSRF 방지 확인용이다.
 async function api(method: string, path: string, body?: BodyInit, contentType = "application/json") {
@@ -106,7 +155,7 @@ function Media({ m, title }: { m: TimelineMedia; title: string }) {
   const thumb = m.type === "image" ? m.src : m.youtubeId ? `https://img.youtube.com/vi/${m.youtubeId}/hqdefault.jpg` : m.poster;
   return (
     <div className="media">
-      {thumb && !failed && <img src={mediaUrl(thumb)} alt={m.type === "image" ? m.alt : title} loading="lazy" onError={() => setFailed(true)} />}
+      {thumb && !failed && <img src={thumbUrl(thumb)} alt={m.type === "image" ? m.alt : title} loading="lazy" onError={() => setFailed(true)} />}
       {!thumb && <video src={m.src} preload="metadata" muted playsInline aria-label={title} />}
       {thumb && failed && <div className="fb"><Glyph name="image" size={28} /></div>}
       {m.type === "video" && <><div className="scrim" /><div className="play"><b />{m.youtubeId ? "YouTube" : "동영상"}</div></>}
@@ -115,14 +164,17 @@ function Media({ m, title }: { m: TimelineMedia; title: string }) {
 }
 
 // cover: 타임라인 카드에 보이는 대표 이미지인지. onCover가 있으면 대표 이미지로 바꾸는 버튼을 보여 준다.
-function MediaDetail({ m, title, onRemove, cover, onCover }: { m: TimelineMedia; title: string; onRemove?: () => void; cover?: boolean; onCover?: () => void }) {
+// onOpen이 있으면 이미지를 눌러 뷰어를 연다.
+function MediaDetail({ m, title, onRemove, cover, onCover, onOpen }: {
+  m: TimelineMedia; title: string; onRemove?: () => void; cover?: boolean; onCover?: () => void; onOpen?: () => void;
+}) {
   return (
     <>
       <div className="pm">
         {onRemove && <IconButton label="미디어 삭제" size="sm" variant="overlay" className="pm-x" icon={<Glyph name="x" />} onClick={onRemove} />}
         {cover && <span className="cover-badge" title="타임라인에 보이는 대표 이미지"><Glyph name="star" size={13} />대표</span>}
         {!cover && onCover && <button type="button" className="cover-set" title="대표 이미지로 지정" aria-label="대표 이미지로 지정" onClick={onCover}><Glyph name="star" size={15} /></button>}
-        {m.type === "image" && <img src={mediaUrl(m.src)} alt={m.alt} />}
+        {m.type === "image" && <img src={thumbUrl(m.src)} alt={m.alt} className={onOpen ? "zoomable" : undefined} onClick={onOpen} />}
         {m.type === "video" && (m.youtubeId
           ? <iframe src={`https://www.youtube-nocookie.com/embed/${m.youtubeId}`} title={title} allow="accelerometer; encrypted-media; picture-in-picture" allowFullScreen />
           : <video src={m.src} poster={m.poster && mediaUrl(m.poster)} controls preload="metadata" aria-label={title} />)}
@@ -347,10 +399,11 @@ function DragScroll({ children }: { children: ReactNode }) {
 
 type Entry = TimelineItem & { key: string; themeName: string; readOnly: boolean };
 
-function MobileView({ data, message, themes, theme, pick, total, q, setQ, tag, setTag, cloud, list, sel, idx, setSelKey, dark, setDark, heading }: {
+function MobileView({ data, message, themes, theme, pick, total, q, setQ, tag, setTag, cloud, list, sel, idx, setSelKey, dark, setDark, heading, openMedia, openImages }: {
   data?: TimelineData; message: string; themes: TimelineData["themes"]; theme: string; pick: (id: string) => void; total: number;
   q: string; setQ: (q: string) => void; tag: string | null; setTag: (tag: string | null) => void; cloud: [string, number][];
   list: Entry[]; sel: Entry | null; idx: number; setSelKey: (key: string | null) => void; dark: boolean; setDark: (dark: boolean) => void; heading: string;
+  openMedia: (item: TimelineItem, src: string) => void; openImages: (images: ViewerImage[], index: number) => void;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   return (
@@ -410,9 +463,9 @@ function MobileView({ data, message, themes, theme, pick, total, q, setQ, tag, s
           <h2>{sel.title}</h2>
           <div className="date">{sel.date.slice(0, 4)}년 {monthDay(sel.date)}</div>
           {sel.bodyFormat === "markdown" && sel.body
-            ? <><div style={{ height: 24 }} /><MarkdownBody markdown={sel.body} /></>
+            ? <><div style={{ height: 24 }} /><MarkdownBody markdown={sel.body} onOpen={openImages} /></>
             : <>
-              {sel.media ? sel.media.map((m) => <MediaDetail key={m.src} m={m} title={sel.title} />) : <div style={{ height: 24 }} />}
+              {sel.media ? sel.media.map((m) => <MediaDetail key={m.src} m={m} title={sel.title} onOpen={m.type === "image" ? () => openMedia(sel, m.src) : undefined} />) : <div style={{ height: 24 }} />}
               <p className="body">{sel.body ?? sel.description}</p>
             </>}
           {sel.sourceUrl && <Button variant="secondary" size="md" fullWidth iconEnd={<Glyph name="arrow-right" />} onClick={() => window.open(sel.sourceUrl, "_blank", "noopener,noreferrer")}>출처 보기</Button>}
@@ -680,6 +733,15 @@ export default function App() {
   // 상세 패널 너비: 이 페이지를 보는 동안(탭 세션) 유지한다.
   const [panelW, setPanelW] = useState(() => Number(sessionStorage.getItem("chrono-panel")) || defaultPanelWidth);
   useEffect(() => sessionStorage.setItem("chrono-panel", String(panelW)), [panelW]);
+  // 이미지 뷰어(원본). 다른 사건으로 넘어가거나 패널을 닫으면 닫는다.
+  const [viewer, setViewer] = useState<{ images: ViewerImage[]; index: number } | null>(null);
+  useEffect(() => setViewer(null), [selKey]);
+  const openImages = useCallback((images: ViewerImage[], index: number) => setViewer({ images, index: Math.max(0, index) }), []);
+  // 일반 사건: 미디어 중 이미지들을 원본 주소로 모아 누른 이미지부터 보여 준다.
+  const openMedia = (item: TimelineItem, src: string) => {
+    const images = (item.media ?? []).filter((m) => m.type === "image");
+    openImages(images.map((m) => ({ src: mediaUrl(m.src), alt: m.type === "image" ? m.alt : "" })), images.findIndex((m) => m.src === src));
+  };
 
   useEffect(() => localStorage.setItem("chrono-lnb", String(lnbW)), [lnbW]);
   useEffect(() => {
@@ -798,9 +860,12 @@ export default function App() {
     );
   }
   if (mobile) {
-    return <MobileView data={data} message={message} themes={themes} theme={theme} pick={pick} total={total} q={q} setQ={setQ}
-      tag={tag} setTag={(t) => { setTag(t); setSelKey(null); }} cloud={cloud} list={list} sel={sel} idx={idx} setSelKey={setSelKey}
-      dark={dark} setDark={setDark} heading={heading} />;
+    return <>
+      <MobileView data={data} message={message} themes={themes} theme={theme} pick={pick} total={total} q={q} setQ={setQ}
+        tag={tag} setTag={(t) => { setTag(t); setSelKey(null); }} cloud={cloud} list={list} sel={sel} idx={idx} setSelKey={setSelKey}
+        dark={dark} setDark={setDark} heading={heading} openMedia={openMedia} openImages={openImages} />
+      {viewer && <ImageViewer images={viewer.images} index={viewer.index} setIndex={(index) => setViewer({ ...viewer, index })} onClose={() => setViewer(null)} />}
+    </>;
   }
 
   return (
@@ -875,8 +940,9 @@ export default function App() {
           </>}
         </div>
       </main>
+      {/* 패널 밖에 두어 패널 왼쪽 경계선의 가운데에 걸치게 한다(패널은 스크롤·잘림 영역이라 안에 두면 가려진다). */}
+      {sel && <Resizer width={panelW} setWidth={setPanelW} min={360} max={960} reset={defaultPanelWidth} label="상세 패널 크기 조절" edge="left" className="panel-resizer" />}
       <aside className={`panel${sel ? " open" : ""}`} aria-hidden={!sel}>
-        {sel && <Resizer width={panelW} setWidth={setPanelW} min={360} max={960} reset={defaultPanelWidth} label="상세 패널 크기 조절" edge="left" className="panel-resizer" />}
         {sel && <div className="panel-in" key={sel.key}>
           <div className="panel-top"><IconButton label="닫기" size="sm" icon={<Glyph name="x" size={18} />} onClick={() => setSelKey(null)} /></div>
           <div className="badges"><Badge tone="accent" style={{ color: "var(--base-color-white)" }}>{sel.themeName}</Badge>{sel.readOnly && <Badge tone="wash">Obsidian</Badge>}</div>
@@ -887,7 +953,7 @@ export default function App() {
             ? <DateEditor date={sel.date} onSave={(date) => mutate(() => patchItem(sel.key, { date }))} />
             : <div className="date">{sel.date.slice(0, 4)}년 {monthDay(sel.date)}</div>}
           {!markdown && sel.media?.map((m, i) => (
-            <MediaDetail key={m.src} m={m} title={sel.title} cover={i === 0}
+            <MediaDetail key={m.src} m={m} title={sel.title} cover={i === 0} onOpen={m.type === "image" ? () => openMedia(sel, m.src) : undefined}
               onCover={i > 0 ? () => void mutate(() => api("POST", `${itemPath(sel.key)}/cover`, JSON.stringify({ src: m.src }))) : undefined}
               onRemove={ed ? () => { if (window.confirm("이 미디어를 삭제할까요?")) void mutate(() => api("DELETE", `${itemPath(sel.key)}/media/${i}`)); } : undefined} />
           ))}
@@ -900,7 +966,7 @@ export default function App() {
             </EditableText>
             <div className="lbl" style={{ paddingLeft: 0 }}>상세 내용</div>
           </div>}
-          {markdown ? <MarkdownBody markdown={sel.body!} coverSrc={sel.media?.[0]?.src} onCover={setObsidianCover} /> : (
+          {markdown ? <MarkdownBody markdown={sel.body!} coverSrc={sel.media?.[0]?.src} onCover={setObsidianCover} onOpen={openImages} /> : (
             <EditableText value={sel.body ?? sel.description} edit={ed} multiline label="내용" onSave={(body) => mutate(() => patchItem(sel.key, { body }))}>
               <p className="body">{sel.body ?? sel.description}</p>
             </EditableText>
@@ -919,6 +985,7 @@ export default function App() {
           </div>
         </div>}
       </aside>
+      {viewer && <ImageViewer images={viewer.images} index={viewer.index} setIndex={(index) => setViewer({ ...viewer, index })} onClose={() => setViewer(null)} />}
     </div>
   );
 }

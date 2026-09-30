@@ -229,9 +229,19 @@ span.tree-toggle{cursor:default}
 .tree-count{font-size:12px;font-weight:700;color:var(--sema-color-text-subtle)}
 .tree-note{flex:none;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--sema-color-background-secondary);color:var(--sema-color-text-subtle)}
 .src-ignore>button{flex:none;white-space:nowrap}
-/* 상세 패널 크기 조절 핸들(왼쪽 가장자리, 스크롤과 무관하게 고정) */
-.panel-resizer{position:absolute;left:0;top:0;bottom:0;margin:0}
-.panel-resizer::before{left:0}
+/* 상세 패널 크기 조절 핸들: 패널 왼쪽 경계선(패널 너비 위치)의 가운데에 걸친다. 패널의 max-width와 같은 식을 쓴다. */
+.panel-resizer{position:fixed;top:0;bottom:0;right:calc(min(var(--panel-w,480px),100vw - 320px) - 6px);margin:0;z-index:6}
+/* 이미지 뷰어 */
+.panel .pm img.zoomable,.m-sheet .pm img.zoomable,.md-body img{cursor:zoom-in}
+.viewer{position:fixed;inset:0;z-index:50;background:rgba(15,12,16,.92);display:grid;place-items:center;padding:64px 88px}
+.viewer-img{max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--radius-standard);box-shadow:var(--elevation-modal)}
+.viewer-top{position:absolute;top:16px;right:16px;display:flex;align-items:center;gap:12px}
+.viewer-count{font-size:14px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
+.viewer-prev,.viewer-next{position:absolute;top:50%;transform:translateY(-50%)}
+.viewer-prev{left:20px}
+.viewer-next{right:20px}
+.viewer-cap{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:rgba(255,255,255,.8)}
+@media (max-width:760px){.viewer{padding:56px 8px}.viewer-prev{left:6px}.viewer-next{right:6px}}
 /* 대표 이미지 표시·지정 */
 .pm{position:relative}
 .cover-badge,.cover-set{position:absolute;top:10px;left:10px;z-index:1;display:inline-flex;align-items:center;gap:4px;height:28px;border-radius:999px;font-size:12px;font-weight:700;box-shadow:var(--elevation-subtle)}

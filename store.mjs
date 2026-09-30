@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createThumbnailer, mediaThumbKey } from "./thumbs.mjs";
 
 const projectDir = fileURLToPath(new URL(".", import.meta.url));
 export const defaultStoreDir = process.env.STORE_DIR || resolve(projectDir, ".store");
@@ -102,7 +103,12 @@ export function openStore(dir = defaultStoreDir, { mediaGraceMs = 10 * 60_000 } 
     const unique = uniqueMedia(media);
     if (unique.length !== media.length) fixMedia.run(JSON.stringify(unique), row.theme_id, row.id);
   }
-  return { db, dir, mediaDir, mediaGraceMs };
+  const store = { db, dir, mediaDir, mediaGraceMs, thumbs: createThumbnailer(join(dir, "thumbs")) };
+  // 저장된 미디어 중 썸네일이 없는 것을 백그라운드에서 만든다(이전 버전에서 올린 이미지 포함).
+  for (const name of readdirSync(mediaDir)) {
+    if (mediaNamePattern.test(name)) store.thumbs.add(mediaThumbKey(name), join(mediaDir, name));
+  }
+  return store;
 }
 
 export const revision = ({ db }) => Number(db.prepare("SELECT value FROM meta WHERE key = 'revision'").get().value);
@@ -318,6 +324,7 @@ export async function importDir(store, dir, { dryRun = false, overwrite = false,
       await copyFile(path, `${target}.tmp`);
       await rename(`${target}.tmp`, target);
     }
+    store.thumbs.add(mediaThumbKey(name), target);
   }
   transaction(store, write);
   summary.revision = revision(store);
@@ -438,6 +445,7 @@ export async function addMedia(store, themeId, itemId, bytes, { contentType = ""
   const name = `${createHash("sha256").update(bytes).digest("hex")}${ext}`;
   const target = join(store.mediaDir, name);
   if (!(await stat(target).catch(() => null))) await writeAtomic(target, bytes);
+  store.thumbs.add(mediaThumbKey(name), target);
   const entry = { type: "image", src: `media/${name}`, alt: alt.trim() || `${item.title} 사진 ${media.length + 1}` };
   return saveItem(store, themeId, themeName, { ...item, media: [...media, entry] });
 }
@@ -482,13 +490,16 @@ export async function removeMedia(store, themeId, itemId, index) {
 
 // 다른 프로세스(import CLI)가 복사만 하고 아직 커밋하지 않은 파일을 지우지 않도록 최근 파일은 남긴다.
 // ponytail: 시간 기준 유예. 파일 잠금이 필요할 만큼 동시 작업이 잦아지면 바꾼다.
-function removeUnusedMedia({ db, mediaDir, mediaGraceMs }) {
+function removeUnusedMedia({ db, mediaDir, mediaGraceMs, thumbs }) {
   const used = new Set(db.prepare("SELECT media FROM items WHERE media IS NOT NULL").all()
     .flatMap((row) => mediaPaths(JSON.parse(row.media))).map((src) => src.slice("media/".length)));
   for (const name of readdirSync(mediaDir)) {
     const path = join(mediaDir, name);
     if (!used.has(name) && Date.now() - (statSync(path, { throwIfNoEntry: false })?.ctimeMs ?? 0) >= mediaGraceMs) rmSync(path, { force: true });
   }
+  // 원본이 지워진 미디어의 썸네일도 지운다.
+  const remaining = new Set(readdirSync(mediaDir).map(mediaThumbKey));
+  thumbs.prune("m-", (key) => remaining.has(key));
 }
 
 // import한 파일을 지우고, 비게 된 하위 디렉터리도 정리한다. import 디렉터리 자체와 다른 파일(HOWTO 등)은 남긴다.
@@ -536,6 +547,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const result = command === "import"
       ? await importDir(store, dir, { dryRun: flags.includes("--dry-run"), overwrite: flags.includes("--overwrite"), replace: flags.includes("--replace") })
       : await exportDir(store, resolve(dir));
+    await store.thumbs.idle();
     console.log(JSON.stringify(result, null, 2));
   } catch (error) {
     console.error(`실패: ${error instanceof Error ? error.message : error}`);
