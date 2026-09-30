@@ -61,6 +61,12 @@ test("노트 → 사건 변환 규칙", () => {
   assert.deepEqual([phone.item.date, phone.item.title, phone.item.description, phone.item.sourceUrl], ["2018-06-05", "Apple iPhone 8", "실버 64GB", "https://example.com/p"]);
   assert.equal(phone.item.media[0].src, "https://example.com/p.jpg");
 
+  // 외부 http:// 이미지는 https://로 바꿔 표시·대표 이미지 후보가 되게 한다(링크는 그대로).
+  const cooker = convertNote(`---\ndate: 2013-09-01\n---\n\n![a](http://img.danawa.com/a.jpg?x=1&y=2)\n\n[설명서](http://example.com/manual)`, "구매이력/2013/c.md", { resolveFile: exists });
+  assert.equal(cooker.item.media[0].src, "https://img.danawa.com/a.jpg?x=1&y=2");
+  assert.match(cooker.item.body, /!\[a\]\(https:\/\/img\.danawa\.com\/a\.jpg\?x=1&y=2\)/);
+  assert.match(cooker.item.body, /\[설명서\]\(http:\/\/example\.com\/manual\)/);
+
   assert.match(convertNote("---\ntitle: 기타\n---\n본문", "여행/기타.md").error, /날짜 없음/);
   // macOS 파일 이름(NFD)도 제목·id는 NFC로 맞춘다.
   const nfd = convertNote("본문", "여행/2020-01 일본 도쿄.md".normalize("NFD"));
@@ -147,8 +153,9 @@ test("동기화: 미러 반영, 읽기 전용, 내부 API 숨김, vault 파일 �
     await syncer.sync(added.themeId);
     assert.equal(readTimeline(store).themes[0].items[0].media[0].src, "vault/_attachments/image/dsc.jpg");
     assert.equal((await cover(item.id, "vault/_attachments/image/unused.png")).status, 404);
-    // 본문에 있어도 http:// 이미지는 사건 규격에 맞지 않아 대표 이미지가 될 수 없다.
+    // http:// 이미지는 사건 규격에 맞지 않아 대표 이미지가 될 수 없다. 노트의 http 이미지는 https로 바뀌어 고를 수 있다.
     assert.equal((await cover(item.id, "http://example.com/old.jpg")).status, 400);
+    assert.equal((await cover(item.id, "https://example.com/old.jpg")).status, 200);
     // 이전 버전 버그로 규격에 맞지 않는 대표 이미지가 저장돼 있어도, 다음 동기화가 노트 기준으로 되돌린다.
     store.db.prepare("UPDATE sync_covers SET src = 'http://example.com/old.jpg' WHERE item_id = ?").run(item.id);
     store.db.prepare("UPDATE items SET media = ? WHERE id = ?").run(JSON.stringify([{ type: "image", src: "http://example.com/old.jpg", alt: "a" }]), item.id);

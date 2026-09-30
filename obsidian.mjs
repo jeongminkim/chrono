@@ -100,9 +100,16 @@ export function convertNote(text, notePath, { ignoreTags = [], resolveFile = (pa
 
   // 이미지 임베드와 링크를 한 번에 바꾼다(두 번 돌리면 바꾼 링크를 다시 건드린다).
   // 표시 가능한 로컬 이미지 → 서버 경로 이미지, 그 밖의 로컬 첨부 → 파일 이름 링크, 외부 URL → 그대로.
+  // 외부 http:// 이미지는 https://로 바꾼다. 사이트 보안 정책(https 이미지만 허용)과 사건 규격 때문에
+  // http 그대로는 표시도, 대표 이미지 지정도 안 된다. 대부분의 이미지 호스트는 https도 제공한다.
   let body = content
     .replace(/(!?)\[([^\]]*)\]\(([^)\s]+)\)/g, (whole, bang, label, url) => {
       if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith("#")) {
+        if (bang && /^http:\/\//i.test(url)) {
+          const secure = `https://${url.slice("http://".length)}`;
+          images.push({ src: secure, alt: label });
+          return `![${label}](${secure})`;
+        }
         if (bang && /^https:\/\//i.test(url)) images.push({ src: url, alt: label });
         return whole;
       }
