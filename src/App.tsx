@@ -372,6 +372,7 @@ export default function App() {
   const [selKey, setSelKey] = useState<string | null>(null);
   const [dark, setDark] = useState(() => localStorage.getItem("chrono-theme") === "dark");
   const [edit, setEdit] = useState(false);
+  const [importing, setImporting] = useState(false);
   const mobile = useMobile();
   const [lnbW, setLnbW] = useState(() => Number(localStorage.getItem("chrono-lnb")) || defaultSidebarWidth);
 
@@ -447,6 +448,22 @@ export default function App() {
     if (!window.confirm(`"${e.title}" 사건을 삭제할까요? 되돌릴 수 없습니다.`)) return;
     void mutate(() => api("DELETE", itemPath(e.key))).then((ok) => { if (ok && selKey === e.key) setSelKey(null); });
   };
+  // import 디렉터리를 먼저 검증(dry-run)해 결과를 보여 주고, 확인하면 실제로 가져온다.
+  const runImport = async () => {
+    setImporting(true);
+    try {
+      const plan = await api("POST", "import?dryRun=1");
+      const skipped = plan.skipped > 0 ? `\n건너뛸 항목(이미 있음): ${plan.skippedIds.slice(0, 5).join(", ")}${plan.skipped > 5 ? ` 외 ${plan.skipped - 5}건` : ""}` : "";
+      if (!window.confirm(`import 디렉터리의 data.json을 가져옵니다.\n\n추가 ${plan.added}건 · 건너뜀 ${plan.skipped}건 · 이미지 ${plan.images}개${skipped}\n\n진행하면 data.json과 가져온 이미지 원본은 삭제됩니다. 진행할까요?`)) return;
+      const result = await api("POST", "import");
+      await refresh();
+      window.alert(`import 완료: 추가 ${result.added}건 · 건너뜀 ${result.skipped}건 · 이미지 ${result.images}개`);
+    } catch (error) {
+      window.alert(`import 실패: ${error instanceof Error ? error.message : "알 수 없는 오류"}`);
+    } finally {
+      setImporting(false);
+    }
+  };
   const addMedia = (key: string, file: File) => {
     if (file.size > 10 * 1024 * 1024) return setMessage("저장하지 못했습니다: 이미지가 10MB를 넘습니다.");
     void mutate(() => api("POST", `${itemPath(key)}/media`, file, file.type || "application/octet-stream"));
@@ -489,7 +506,10 @@ export default function App() {
               {cloud.map(([t, n]) => <Tag key={t} selected={tag === t} onClick={() => { setTag(tag === t ? null : t); setSelKey(null); }}>#{t}{n > 1 ? ` ${n}` : ""}</Tag>)}
             </TagCloud>
           </div>
-          <Switch checked={edit} onChange={setEdit} label="편집 허용" />
+          <div className="edit-row">
+            <Switch checked={edit} onChange={setEdit} label="편집 허용" />
+            <Button variant="secondary" size="sm" disabled={!edit || importing} onClick={runImport}>{importing ? "import 중…" : "import"}</Button>
+          </div>
           <Input placeholder="제목, 내용, 날짜" aria-label="타임라인 검색" value={q} onChange={(event: { target: { value: string } }) => setQ(event.target.value)} iconStart={<Glyph name="search" />} fullWidth />
         </div>
       </nav>

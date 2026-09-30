@@ -6,7 +6,7 @@ COPY . .
 RUN npm run build
 
 FROM node:22.22-alpine
-ENV NODE_ENV=production PORT=3000 STORE_DIR=/var/lib/chrono
+ENV NODE_ENV=production PORT=3000 STORE_DIR=/var/lib/chrono IMPORT_DIR=/import
 WORKDIR /app
 COPY --from=build /app/dist ./dist
 COPY server.mjs store.mjs ./

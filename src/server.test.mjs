@@ -9,7 +9,8 @@ import { importDir, openStore } from "../store.mjs";
 
 test("앱 서버가 상태, 타임라인 API와 미디어를 제공한다", async () => {
   const store = openStore(mkdtempSync(join(tmpdir(), "chrono-store-")), { mediaGraceMs: 0 });
-  const server = createApp({ store });
+  const importPath = mkdtempSync(join(tmpdir(), "chrono-ui-import-"));
+  const server = createApp({ store, importPath });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -66,6 +67,19 @@ test("앱 서버가 상태, 타임라인 API와 미디어를 제공한다", asyn
     assert.equal((await write("DELETE", "t/items/one/media/0")).status, 200);
     assert.equal((await write("DELETE", "t/items/one")).status, 200);
     assert.deepEqual((await (await fetch(`${base}/api/timeline`)).json()).themes, []);
+
+    // 화면의 import 버튼: 검증(dry-run) 후 실제 import, 끝나면 data.json 삭제
+    const importReq = (query = "", headers = { "x-chrono-edit": "1" }) => fetch(`${base}/api/import${query}`, { method: "POST", headers });
+    assert.equal((await importReq("", {})).status, 403);
+    assert.equal((await importReq()).status, 404);
+    writeFileSync(join(importPath, "data.json"), "{bad");
+    assert.match((await (await importReq()).json()).error, /JSON 문법/);
+    writeFileSync(join(importPath, "data.json"), JSON.stringify({ version: 1, themes: [{ id: "u", name: "U", items: [{ id: "a", date: "2021", title: "t", description: "d" }] }] }));
+    const { revision: _, ...plan } = await (await importReq("?dryRun=1")).json();
+    assert.deepEqual(plan, { added: 1, updated: 0, skipped: 0, removed: 0, images: 0, dryRun: true });
+    assert.equal((await (await importReq()).json()).added, 1);
+    assert.equal((await (await fetch(`${base}/api/timeline`)).json()).themes[0].id, "u");
+    assert.equal((await importReq()).status, 404);
   } finally {
     server.close();
     await once(server, "close");
