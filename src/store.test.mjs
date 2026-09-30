@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { addMedia, deleteItem, deleteTheme, exportDir, importDir, openStore, readTimeline, removeMedia, revision, updateItem } from "../store.mjs";
+import { addMedia, deleteItem, deleteTheme, resetStore, exportDir, importDir, openStore, readTimeline, removeMedia, revision, updateItem } from "../store.mjs";
 
 const item = (id, extra = {}) => ({ id, date: "2020-01-01", title: id, description: `${id} 설명`, tags: ["태그"], ...extra });
 const image = (...srcs) => ({ media: srcs.map((src) => ({ type: "image", src, alt: "대체 텍스트" })) });
@@ -147,4 +147,26 @@ test("화면 편집: 수정, 이미지 추가·삭제, 사건·테마 삭제", a
   assert.deepEqual([readTimeline(store).themes, revision(store)], [[], before + 1]);
   assert.throws(() => deleteTheme(store, "b"), (e) => e.status === 404);
   assert.deepEqual(readdirSync(store.mediaDir), []);
+});
+
+test("경로가 달라도 내용이 같은 이미지는 한 사건에 한 번만 저장하고, 기존 중복도 고친다", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "chrono-store-"));
+  const store = openStore(dir, { mediaGraceMs: 0 });
+  await importDir(store, importFolder([{ id: "a", name: "A", items: [item("one", image("images/x.png", "./images/x.png", "images/copy.png", "images/y.png"))] }],
+    { "images/x.png": "same", "images/copy.png": "same", "images/y.png": "other" }));
+  assert.equal(readTimeline(store).themes[0].items[0].media.length, 2);
+
+  // 이전 버전이 남긴 중복 행은 DB를 열 때 고친다.
+  const [first] = readTimeline(store).themes[0].items[0].media;
+  store.db.prepare("UPDATE items SET media = ?").run(JSON.stringify([first, first]));
+  store.db.close();
+  assert.equal(readTimeline(openStore(dir)).themes[0].items[0].media.length, 1);
+});
+
+test("reset은 모든 데이터와 미디어 파일을 지운다", async () => {
+  const store = newStore();
+  await importDir(store, importFolder([{ id: "a", name: "A", items: [item("one", image("one.png"))] }], { "one.png": "1" }));
+  const before = revision(store);
+  resetStore(store);
+  assert.deepEqual([readTimeline(store).themes, readdirSync(store.mediaDir), revision(store)], [[], [], before + 1]);
 });

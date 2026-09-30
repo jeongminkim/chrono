@@ -72,6 +72,10 @@ test("앱 서버가 상태, 타임라인 API와 미디어를 제공한다", asyn
     const importReq = (query = "", headers = { "x-chrono-edit": "1" }) => fetch(`${base}/api/import${query}`, { method: "POST", headers });
     assert.equal((await importReq("", {})).status, 403);
     assert.equal((await importReq()).status, 404);
+
+    assert.equal((await fetch(`${base}/api/reset`, { method: "POST" })).status, 403);
+    assert.equal((await fetch(`${base}/api/reset`, { method: "POST", headers: { "x-chrono-edit": "1" } })).status, 200);
+    assert.deepEqual((await (await fetch(`${base}/api/timeline`)).json()).themes, []);
     writeFileSync(join(importPath, "data.json"), "{bad");
     assert.match((await (await importReq()).json()).error, /JSON 문법/);
     writeFileSync(join(importPath, "data.json"), JSON.stringify({ version: 1, themes: [{ id: "u", name: "U", items: [{ id: "a", date: "2021", title: "t", description: "d" }] }] }));
@@ -80,6 +84,10 @@ test("앱 서버가 상태, 타임라인 API와 미디어를 제공한다", asyn
     assert.equal((await (await importReq()).json()).added, 1);
     assert.equal((await (await fetch(`${base}/api/timeline`)).json()).themes[0].id, "u");
     assert.equal((await importReq()).status, 404);
+
+    assert.equal((await fetch(`${base}/api/reset`, { method: "POST" })).status, 403);
+    assert.equal((await fetch(`${base}/api/reset`, { method: "POST", headers: { "x-chrono-edit": "1" } })).status, 200);
+    assert.deepEqual((await (await fetch(`${base}/api/timeline`)).json()).themes, []);
   } finally {
     server.close();
     await once(server, "close");

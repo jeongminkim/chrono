@@ -163,4 +163,5 @@ body:has(.m-sheet.open){overflow:hidden}
 .m-sec{border-top:1px solid var(--sema-color-border-subtle);padding-top:20px;margin-top:28px}
 .m-sec .m-lbl{padding-left:0}
 .m-nav{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.edit-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.edit-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.edit-actions-lnb{display:flex;gap:6px}

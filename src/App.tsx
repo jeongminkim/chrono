@@ -464,6 +464,10 @@ export default function App() {
       setImporting(false);
     }
   };
+  const resetAll = () => {
+    if (!window.confirm(`저장된 모든 테마와 사건 ${total}개, 첨부 이미지를 삭제할까요?\n되돌릴 수 없습니다. 필요하면 먼저 export로 백업하세요.`)) return;
+    void mutate(() => api("POST", "reset")).then((ok) => { if (ok) { pick("all"); setSelKey(null); } });
+  };
   const addMedia = (key: string, file: File) => {
     if (file.size > 10 * 1024 * 1024) return setMessage("저장하지 못했습니다: 이미지가 10MB를 넘습니다.");
     void mutate(() => api("POST", `${itemPath(key)}/media`, file, file.type || "application/octet-stream"));
@@ -508,7 +512,10 @@ export default function App() {
           </div>
           <div className="edit-row">
             <Switch checked={edit} onChange={setEdit} label="편집 허용" />
-            <Button variant="secondary" size="sm" disabled={!edit || importing} onClick={runImport}>{importing ? "import 중…" : "import"}</Button>
+            {edit && <div className="edit-actions-lnb">
+              <Button variant="secondary" size="sm" disabled={importing} onClick={runImport}>{importing ? "import 중…" : "import"}</Button>
+              <Button variant="ghost" size="sm" disabled={importing} onClick={resetAll}>reset</Button>
+            </div>}
           </div>
           <Input placeholder="제목, 내용, 날짜" aria-label="타임라인 검색" value={q} onChange={(event: { target: { value: string } }) => setQ(event.target.value)} iconStart={<Glyph name="search" />} fullWidth />
         </div>

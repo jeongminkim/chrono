@@ -33,7 +33,7 @@ npm start
 - `import/HOWTO_MAKE_DATA.md`: 필드 규격, 예시, LLM용 프롬프트
 - `import/data.json`, `import/images/`: import할 원본. **import에 성공하면 `data.json`과 import한 이미지가 자동 삭제됩니다.** 참조되지 않은 파일과 HOWTO 문서는 남습니다.
 
-**화면에서 import:** LNB의 **편집 허용** 스위치를 켜고 오른쪽 **import** 버튼을 누르면, 서버의 import 디렉터리(컨테이너 `/import`, 로컬 `import/`)를 먼저 검증해 추가·건너뜀 건수를 보여 주고, 확인하면 가져옵니다. 동작은 아래 기본 import(추가 전용)와 같습니다.
+**화면에서 import:** LNB의 **편집 허용** 스위치를 켜고 오른쪽 **import** 버튼을 누르면, 서버의 import 디렉터리(컨테이너 `/import`, 로컬 `import/`)를 먼저 검증해 추가·건너뜀 건수를 보여 주고, 확인하면 가져옵니다. 동작은 아래 기본 import(추가 전용)와 같습니다. 같은 줄의 **reset** 버튼은 저장된 모든 테마·사건과 첨부 이미지를 삭제합니다(되돌릴 수 없으니 먼저 export로 백업하세요).
 
 **명령으로 import:** 덮어쓰기(`--overwrite`)나 교체(`--replace`)가 필요할 때 씁니다. 컨테이너가 떠 있으면 `run --rm` 대신 `exec`도 됩니다.
 
@@ -106,6 +106,6 @@ npm audit
 - 웹사이트: `GET /`
 - 타임라인 데이터: `GET /api/timeline`
 - 미디어: `GET /api/media/<sha256>.<ext>`
-- 편집(헤더 `X-Chrono-Edit: 1` 필요): `POST /api/import[?dryRun=1]`, `DELETE /api/themes/<테마>`, `DELETE|PATCH /api/themes/<테마>/items/<사건>`, `POST /api/themes/<테마>/items/<사건>/media`, `DELETE …/media/<순번>`
+- 편집(헤더 `X-Chrono-Edit: 1` 필요): `POST /api/import[?dryRun=1]`, `POST /api/reset`, `DELETE /api/themes/<테마>`, `DELETE|PATCH /api/themes/<테마>/items/<사건>`, `POST /api/themes/<테마>/items/<사건>/media`, `DELETE …/media/<순번>`
 
 상세 설계는 [`documents/PROJECT_PLAN.md`](documents/PROJECT_PLAN.md), 데이터 저장소 구조를 다룬 [`documents/DATA_STORE_PLAN.md`](documents/DATA_STORE_PLAN.md), 편집 기능을 다룬 [`documents/EDIT_FEATURE_PLAN.md`](documents/EDIT_FEATURE_PLAN.md)를 참고하세요.

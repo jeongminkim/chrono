@@ -3,7 +3,7 @@ import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { addMedia, deleteItem, importDir, deleteTheme, mediaNamePattern, openStore, readTimeline, removeMedia, revision, StoreError, updateItem } from "./store.mjs";
+import { addMedia, deleteItem, importDir, resetStore, deleteTheme, mediaNamePattern, openStore, readTimeline, removeMedia, revision, StoreError, updateItem } from "./store.mjs";
 
 const projectDir = fileURLToPath(new URL(".", import.meta.url));
 const mimeTypes = {
@@ -163,6 +163,13 @@ export function createApp({
     if (pathname === "/healthz") {
       response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
       response.end("ok");
+      return;
+    }
+    if (pathname === "/api/reset" && request.method === "POST") {
+      if (allowWrite(request, response)) {
+        resetStore(store);
+        sendJson(response, 200, { revision: revision(store) });
+      }
       return;
     }
     if (pathname === "/api/import" && request.method === "POST") {

@@ -16,6 +16,10 @@ const schemaVersion = "2";
 const isLocal = (src) => !/^[a-z][a-z0-9+.-]*:/i.test(src) && !src.startsWith("//");
 const mediaPaths = (media = []) => media.flatMap((m) => [m.type === "image" && m.src, m.poster]).filter((src) => src && isLocal(src));
 
+// 파일 이름을 내용 해시로 바꾸면 서로 다른 경로(예: "a.jpg"와 "./a.jpg", 내용이 같은 두 파일)가 같은 src가 된다.
+// 한 사건 안에서 같은 src는 규격 위반이라 화면 전체가 못 읽으므로, 처음 것만 남긴다.
+const uniqueMedia = (media) => media.filter((m, i) => media.findIndex((x) => x.src === m.src) === i);
+
 // HTTP 응답 코드로 옮길 수 있는 저장소 오류
 export class StoreError extends Error {
   constructor(status, message) {
@@ -58,6 +62,13 @@ export function openStore(dir = defaultStoreDir, { mediaGraceMs = 10 * 60_000 } 
       COMMIT;`);
   }
   if (version() !== schemaVersion) throw new Error(`지원하지 않는 DB 스키마 버전입니다: ${version()}`);
+  // 이전 버전 import가 남긴 중복 미디어를 고친다(멱등).
+  const fixMedia = db.prepare("UPDATE items SET media = ? WHERE theme_id = ? AND id = ?");
+  for (const row of db.prepare("SELECT theme_id, id, media FROM items WHERE media IS NOT NULL").all()) {
+    const media = JSON.parse(row.media);
+    const unique = uniqueMedia(media);
+    if (unique.length !== media.length) fixMedia.run(JSON.stringify(unique), row.theme_id, row.id);
+  }
   return { db, dir, mediaDir, mediaGraceMs };
 }
 
@@ -169,7 +180,7 @@ export async function importDir(store, dir, { dryRun = false, overwrite = false,
         if (!written.has(`${theme.id}/${item.id}`)) continue;
         writeItem(store, theme.id, {
           ...item,
-          ...(item.media && { media: item.media.map((m) => ({ ...m, src: toStored(m.src), ...(m.type === "video" && m.poster && { poster: toStored(m.poster) }) })) }),
+          ...(item.media && { media: uniqueMedia(item.media.map((m) => ({ ...m, src: toStored(m.src), ...(m.type === "video" && m.poster && { poster: toStored(m.poster) }) }))) }),
         });
       }
       if (replace) removeMissing.run(theme.id, JSON.stringify(theme.items.map((item) => item.id)));
@@ -227,6 +238,12 @@ async function saveItem(store, themeId, themeName, item) {
   }
   transaction(store, () => writeItem(store, themeId, valid));
   return valid;
+}
+
+// 화면의 reset 버튼: 모든 테마·사건과 미디어 파일을 지운다. revision은 계속 올려 열린 화면이 갱신되게 한다.
+export function resetStore(store) {
+  transaction(store, () => store.db.prepare("DELETE FROM themes").run());
+  for (const name of readdirSync(store.mediaDir)) rmSync(join(store.mediaDir, name), { force: true });
 }
 
 export function deleteTheme(store, themeId) {
