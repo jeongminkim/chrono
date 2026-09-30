@@ -82,7 +82,7 @@ export function convertNote(text, notePath, { ignoreTags = [], resolveFile = (pa
 
   const ignore = new Set(ignoreTags);
   const files = new Set();
-  let firstImage;
+  const images = []; // 대표 이미지 후보(표시 가능한 로컬 이미지와 외부 https 이미지), 본문 순서
   const noteDir = posix.dirname(notePath);
   // 노트 기준 상대 경로 → vault 기준 경로. vault 밖을 가리키면 null.
   const resolveLocal = (url) => {
@@ -102,7 +102,7 @@ export function convertNote(text, notePath, { ignoreTags = [], resolveFile = (pa
   let body = content
     .replace(/(!?)\[([^\]]*)\]\(([^)\s]+)\)/g, (whole, bang, label, url) => {
       if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith("#")) {
-        if (bang && /^https:\/\//i.test(url)) firstImage ??= { src: url, alt: label };
+        if (bang && /^https:\/\//i.test(url)) images.push({ src: url, alt: label });
         return whole;
       }
       const found = resolveLocal(url);
@@ -110,7 +110,7 @@ export function convertNote(text, notePath, { ignoreTags = [], resolveFile = (pa
       if (!path) return label ? (bang ? `(${label})` : label) : "";
       files.add(path);
       if (bang && displayableImages.has(posix.extname(path).toLowerCase())) {
-        firstImage ??= { src: vaultUrl(path), alt: label };
+        images.push({ src: vaultUrl(path), alt: label });
         return `![${label}](${vaultUrl(path)})`;
       }
       return `[${bang ? `📎 ${label || nfc(posix.basename(path))}` : label || nfc(posix.basename(path))}](${vaultUrl(path)})`;
@@ -144,10 +144,10 @@ export function convertNote(text, notePath, { ignoreTags = [], resolveFile = (pa
     description: plainText(summary) || firstParagraph(content.replace(/!?\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, t, a) => a ?? t)) || title,
     ...(body && { body, bodyFormat: "markdown" }),
     tags: allTags,
-    ...(firstImage && { media: [{ type: "image", src: firstImage.src, alt: firstImage.alt || title }] }),
+    ...(images[0] && { media: [{ type: "image", src: images[0].src, alt: images[0].alt || title }] }),
     ...(typeof data.url === "string" && /^https:\/\//i.test(data.url) && { sourceUrl: data.url }),
   };
-  return { item, files: [...files], rawTags };
+  return { item, files: [...files], rawTags, images };
 }
 
 async function listNotes(dir, prefix = "") {
@@ -213,6 +213,8 @@ export function createSyncer(store, vaultDir, { debounceMs = 2000, rescanMs = 5 
     const { parseTimelineData } = await import("./src/data.ts");
     const themeName = store.db.prepare("SELECT name FROM themes WHERE id = ?").get(themeId).name;
     const notes = await listNotes(real);
+    const covers = new Map(store.db.prepare("SELECT item_id, src FROM sync_covers WHERE theme_id = ?").all(themeId).map((r) => [r.item_id, r.src]));
+    const staleCovers = [];
     const skipped = [];
     const items = [];
     const files = new Set();
@@ -226,6 +228,11 @@ export function createSyncer(store, vaultDir, { debounceMs = 2000, rescanMs = 5 
       }
       // 태그 후보(무시한 태그 포함): 설정 화면에서 "무시할 태그"를 고를 때 보여 준다.
       for (const tag of result.rawTags) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+      // 화면에서 고른 대표 이미지가 노트에 아직 있으면 그것을 쓴다.
+      const cover = covers.get(result.item.id);
+      const coverImage = cover && result.images.find((i) => i.src === cover);
+      if (coverImage) result.item.media = [{ type: "image", src: coverImage.src, alt: coverImage.alt || result.item.title }];
+      else if (cover) staleCovers.push(result.item.id);
       try {
         const valid = parseTimelineData(JSON.stringify({ version: 1, themes: [{ id: themeId, name: themeName, items: [result.item] }] })).themes[0].items[0];
         items.push(valid);
@@ -257,6 +264,9 @@ export function createSyncer(store, vaultDir, { debounceMs = 2000, rescanMs = 5 
       updated: changed.filter((i) => current.has(i.id)).length, removed: removed.length, skipped,
       tags: [...tagCounts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko")),
     };
+    // 노트에서 이미지가 사라졌거나 노트가 없어진 대표 이미지 선택은 지운다.
+    const removeCover = store.db.prepare("DELETE FROM sync_covers WHERE theme_id = ? AND item_id = ?");
+    for (const id of [...staleCovers, ...[...covers.keys()].filter((id) => !next.has(id))]) removeCover.run(themeId, id);
     store.db.prepare("UPDATE sync_sources SET synced_at = ?, report = ? WHERE theme_id = ?").run(new Date().toISOString(), JSON.stringify(report), themeId);
     return report;
   }

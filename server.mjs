@@ -5,7 +5,7 @@ import { basename, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { handleInternal } from "./internal-api.mjs";
 import { createSyncer } from "./obsidian.mjs";
-import { addMedia, deleteItem, importDir, resetStore, deleteTheme, mediaNamePattern, openStore, readTimeline, removeMedia, revision, StoreError, updateItem } from "./store.mjs";
+import { addMedia, deleteItem, importDir, resetStore, setCover, deleteTheme, mediaNamePattern, openStore, readTimeline, removeMedia, revision, StoreError, updateItem } from "./store.mjs";
 
 const projectDir = fileURLToPath(new URL(".", import.meta.url));
 const mimeTypes = {
@@ -127,7 +127,20 @@ async function handleWrite(request, response, store, pathname) {
   if (!allowWrite(request, response)) return;
   const match = writeRoute.exec(pathname);
   const isMedia = pathname.includes("/media");
+  const cover = /^\/api\/themes\/([^/]+)\/items\/([^/]+)\/cover$/.exec(pathname);
   try {
+    if (cover && request.method === "POST") {
+      let body;
+      try {
+        body = JSON.parse((await readBody(request, 64 * 1024)).toString("utf8"));
+      } catch (error) {
+        throw error instanceof StoreError ? error : new StoreError(400, "JSON 본문이 올바르지 않습니다.");
+      }
+      const [themeId, itemId] = cover.slice(1).map(decodeURIComponent);
+      const item = await setCover(store, themeId, itemId, body?.src);
+      sendJson(response, 200, { revision: revision(store), item });
+      return;
+    }
     let themeId, itemId, index;
     try {
       [themeId, itemId, index] = match ? match.slice(1).map((part) => part && decodeURIComponent(part)) : [];

@@ -138,6 +138,17 @@ test("동기화: 미러 반영, 읽기 전용, 내부 API 숨김, vault 파일 �
     const pdf = await fetch(`${base}/api/vault/_attachments/pdf/ticket.pdf`);
     assert.deepEqual([pdf.status, pdf.headers.get("content-type")], [200, "application/pdf"]);
 
+    // 대표 이미지: 노트 본문의 다른 이미지로 바꾸면 카드에 반영되고, 다시 동기화해도 유지된다.
+    const cover = (key, src) => write("POST", `/api/themes/${added.themeId}/items/${key}/cover`, { src });
+    assert.equal(item.media[0].src, "vault/_attachments/image/tokyo.png");
+    const changed = await cover(item.id, "vault/_attachments/image/dsc.jpg");
+    assert.equal(changed.status, 200);
+    assert.deepEqual((await changed.json()).item.media, [{ type: "image", src: "vault/_attachments/image/dsc.jpg", alt: "DSC.JPG" }]);
+    await syncer.sync(added.themeId);
+    assert.equal(readTimeline(store).themes[0].items[0].media[0].src, "vault/_attachments/image/dsc.jpg");
+    assert.equal((await cover(item.id, "vault/_attachments/image/unused.png")).status, 404);
+    assert.equal((await fetch(`${base}/api/themes/${added.themeId}/items/${item.id}/cover`, { method: "POST", body: "{}" })).status, 403);
+
     // reset·export·import는 Obsidian 테마를 건드리지 않는다.
     resetStore(store);
     assert.equal(readTimeline(store).themes.length, 2);
@@ -154,6 +165,9 @@ test("동기화: 미러 반영, 읽기 전용, 내부 API 숨김, vault 파일 �
     writeFileSync(join(vault, "여행/2002/2002-02 일본 도쿄.md"), "---\ntitle: 2002-02 일본 도쿄 (수정)\n---\n\n고친 본문");
     for (let i = 0; i < 60 && readTimeline(store).themes[0].items[0].title !== "일본 도쿄 (수정)"; i++) await new Promise((r) => setTimeout(r, 50));
     assert.equal(readTimeline(store).themes[0].items[0].title, "일본 도쿄 (수정)");
+    // 고른 대표 이미지가 노트에서 사라지면 선택도 지운다.
+    assert.equal(readTimeline(store).themes[0].items[0].media, undefined);
+    assert.equal(store.db.prepare("SELECT COUNT(*) AS n FROM sync_covers").get().n, 0);
     rmSync(join(vault, "여행/2024"), { recursive: true });
     await syncer.sync(added.themeId);
     assert.deepEqual(readTimeline(store).themes[0].items.map((i) => i.date), ["2002-02"]);

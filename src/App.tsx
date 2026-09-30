@@ -7,6 +7,7 @@ import {
   useState,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { micromark } from "micromark";
@@ -16,6 +17,7 @@ import { cleanTags, maxMediaCount, mergeTimelineItems, parseTimelineData, type T
 
 const dataUrl = `${import.meta.env.BASE_URL}api/timeline`;
 const defaultSidebarWidth = 300;
+const defaultPanelWidth = 480;
 
 function Glyph({ name, size = 16 }: { name: string; size?: number }) {
   const mask = `center/${size}px no-repeat url(${import.meta.env.BASE_URL}icons/${name}.svg)`;
@@ -35,9 +37,47 @@ function renderMarkdown(markdown: string) {
   return html.replace(/<img /g, '<img loading="lazy" ').replace(/<a href=/g, '<a target="_blank" rel="noopener noreferrer" href=');
 }
 
-function MarkdownBody({ markdown }: { markdown: string }) {
+// coverSrc/onCover가 있으면 본문 이미지마다 대표 이미지 표시(현재 대표) 또는 지정 버튼을 붙인다.
+function MarkdownBody({ markdown, coverSrc, onCover }: { markdown: string; coverSrc?: string; onCover?: (src: string) => void }) {
   const html = useMemo(() => renderMarkdown(markdown), [markdown]);
-  return <div className="md-body" dangerouslySetInnerHTML={{ __html: html }} />;
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!onCover || !ref.current) return;
+    for (const img of ref.current.querySelectorAll("img")) {
+      // 화면의 경로(/api/vault/…)를 저장된 미디어 경로(vault/…)로 되돌려 대표 이미지와 비교한다.
+      const raw = img.getAttribute("src") ?? "";
+      const src = raw.startsWith(apiBase) ? raw.slice(apiBase.length) : raw;
+      let wrap = img.parentElement?.classList.contains("md-img") ? img.parentElement : null;
+      if (!wrap) {
+        wrap = document.createElement("span");
+        wrap.className = "md-img";
+        img.replaceWith(wrap);
+        wrap.append(img);
+      }
+      wrap.querySelector(".cover-badge, .cover-set")?.remove();
+      const isCover = src === coverSrc;
+      const mark = document.createElement(isCover ? "span" : "button");
+      mark.className = isCover ? "cover-badge" : "cover-set";
+      if (isCover) {
+        mark.title = "타임라인에 보이는 대표 이미지";
+        mark.innerHTML = '<span class="star"></span>대표';
+      } else {
+        (mark as HTMLButtonElement).type = "button";
+        mark.title = "대표 이미지로 지정";
+        mark.setAttribute("aria-label", "대표 이미지로 지정");
+        mark.dataset.coverSrc = src;
+        mark.innerHTML = '<span class="star"></span>';
+      }
+      wrap.append(mark);
+    }
+  }, [html, coverSrc, onCover]);
+  return (
+    <div ref={ref} className="md-body" dangerouslySetInnerHTML={{ __html: html }}
+      onClick={(event) => {
+        const button = (event.target as HTMLElement).closest<HTMLElement>("[data-cover-src]");
+        if (button && onCover) onCover(button.dataset.coverSrc!);
+      }} />
+  );
 }
 
 // data.json의 상대 경로는 data.json 위치를 기준으로 해석한다.
@@ -74,11 +114,14 @@ function Media({ m, title }: { m: TimelineMedia; title: string }) {
   );
 }
 
-function MediaDetail({ m, title, onRemove }: { m: TimelineMedia; title: string; onRemove?: () => void }) {
+// cover: 타임라인 카드에 보이는 대표 이미지인지. onCover가 있으면 대표 이미지로 바꾸는 버튼을 보여 준다.
+function MediaDetail({ m, title, onRemove, cover, onCover }: { m: TimelineMedia; title: string; onRemove?: () => void; cover?: boolean; onCover?: () => void }) {
   return (
     <>
       <div className="pm">
         {onRemove && <IconButton label="미디어 삭제" size="sm" variant="overlay" className="pm-x" icon={<Glyph name="x" />} onClick={onRemove} />}
+        {cover && <span className="cover-badge" title="타임라인에 보이는 대표 이미지"><Glyph name="star" size={13} />대표</span>}
+        {!cover && onCover && <button type="button" className="cover-set" title="대표 이미지로 지정" aria-label="대표 이미지로 지정" onClick={onCover}><Glyph name="star" size={15} /></button>}
         {m.type === "image" && <img src={mediaUrl(m.src)} alt={m.alt} />}
         {m.type === "video" && (m.youtubeId
           ? <iframe src={`https://www.youtube-nocookie.com/embed/${m.youtubeId}`} title={title} allow="accelerometer; encrypted-media; picture-in-picture" allowFullScreen />
@@ -89,14 +132,19 @@ function MediaDetail({ m, title, onRemove }: { m: TimelineMedia; title: string; 
   );
 }
 
-function Resizer({ width, setWidth }: { width: number; setWidth: (value: number | ((current: number) => number)) => void }) {
+// 드래그로 너비를 바꾸는 핸들. edge="right"는 오른쪽 가장자리(LNB), "left"는 왼쪽 가장자리(상세 패널)에 붙는다.
+function Resizer({ width, setWidth, min, max, reset, label, edge = "right", className = "" }: {
+  width: number; setWidth: (value: number | ((current: number) => number)) => void;
+  min: number; max: number; reset: number; label: string; edge?: "left" | "right"; className?: string;
+}) {
   const [drag, setDrag] = useState(false);
-  const clamp = (value: number) => Math.max(240, Math.min(520, value));
+  const clamp = (value: number) => Math.max(min, Math.min(max, value));
+  const sign = edge === "right" ? 1 : -1;
   const down = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     setDrag(true);
     const x0 = event.clientX;
-    const move = (ev: PointerEvent) => setWidth(clamp(width + ev.clientX - x0));
+    const move = (ev: PointerEvent) => setWidth(clamp(width + sign * (ev.clientX - x0)));
     const up = () => {
       setDrag(false);
       document.body.style.cursor = "";
@@ -108,11 +156,11 @@ function Resizer({ width, setWidth }: { width: number; setWidth: (value: number 
     window.addEventListener("pointerup", up);
   };
   const key = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "ArrowLeft") setWidth((w) => clamp(w - 16));
-    if (event.key === "ArrowRight") setWidth((w) => clamp(w + 16));
+    if (event.key === "ArrowLeft") setWidth((w) => clamp(w - sign * 16));
+    if (event.key === "ArrowRight") setWidth((w) => clamp(w + sign * 16));
   };
   return (
-    <div className={`resizer${drag ? " drag" : ""}`} role="separator" aria-orientation="vertical" aria-label="사이드바 크기 조절" tabIndex={0} onPointerDown={down} onKeyDown={key} onDoubleClick={() => setWidth(defaultSidebarWidth)}>
+    <div className={`resizer${drag ? " drag" : ""} ${className}`} role="separator" aria-orientation="vertical" aria-label={label} tabIndex={0} onPointerDown={down} onKeyDown={key} onDoubleClick={() => setWidth(reset)}>
       <div className="grip"><i /><i /><i /></div>
     </div>
   );
@@ -629,6 +677,9 @@ export default function App() {
     setRoute(next);
   };
   const [lnbW, setLnbW] = useState(() => Number(localStorage.getItem("chrono-lnb")) || defaultSidebarWidth);
+  // 상세 패널 너비: 이 페이지를 보는 동안(탭 세션) 유지한다.
+  const [panelW, setPanelW] = useState(() => Number(sessionStorage.getItem("chrono-panel")) || defaultPanelWidth);
+  useEffect(() => sessionStorage.setItem("chrono-panel", String(panelW)), [panelW]);
 
   useEffect(() => localStorage.setItem("chrono-lnb", String(lnbW)), [lnbW]);
   useEffect(() => {
@@ -730,6 +781,10 @@ export default function App() {
   // Obsidian 사건은 편집 허용이어도 고칠 수 없다. Markdown 본문은 이미지가 본문 안에 있어 미디어 블록을 따로 그리지 않는다.
   const ed = edit && !sel?.readOnly;
   const markdown = sel?.bodyFormat === "markdown" && Boolean(sel.body);
+  // 대표 이미지 변경은 화면 표시 선택이라 편집 허용과 무관하고, Obsidian 사건에도 쓸 수 있다.
+  const setObsidianCover = useCallback((src: string) => {
+    if (sel) void mutate(() => api("POST", `${itemPath(sel.key)}/cover`, JSON.stringify({ src })));
+  }, [sel?.key]);
 
   if (mobile && route === "settings") {
     return (
@@ -749,7 +804,7 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className="app" style={{ "--panel-w": `${panelW}px` } as CSSProperties}>
       <nav className="lnb" style={{ width: lnbW }} aria-label="타임라인 탐색">
         <div className="lnb-head">
           <div className="wordmark">Timeline</div>
@@ -789,7 +844,7 @@ export default function App() {
           <Input placeholder="제목, 내용, 날짜" aria-label="타임라인 검색" value={q} onChange={(event: { target: { value: string } }) => setQ(event.target.value)} iconStart={<Glyph name="search" />} fullWidth />
         </div>
       </nav>
-      <Resizer width={lnbW} setWidth={setLnbW} />
+      <Resizer width={lnbW} setWidth={setLnbW} min={240} max={520} reset={defaultSidebarWidth} label="사이드바 크기 조절" />
       <main className={`main${sel ? " open" : ""}`}>
         <div className="wrap">
           {message && <p className={`notice ${data ? "warning" : "error"}`} role="alert">{message}</p>}
@@ -821,6 +876,7 @@ export default function App() {
         </div>
       </main>
       <aside className={`panel${sel ? " open" : ""}`} aria-hidden={!sel}>
+        {sel && <Resizer width={panelW} setWidth={setPanelW} min={360} max={960} reset={defaultPanelWidth} label="상세 패널 크기 조절" edge="left" className="panel-resizer" />}
         {sel && <div className="panel-in" key={sel.key}>
           <div className="panel-top"><IconButton label="닫기" size="sm" icon={<Glyph name="x" size={18} />} onClick={() => setSelKey(null)} /></div>
           <div className="badges"><Badge tone="accent" style={{ color: "var(--base-color-white)" }}>{sel.themeName}</Badge>{sel.readOnly && <Badge tone="wash">Obsidian</Badge>}</div>
@@ -831,7 +887,8 @@ export default function App() {
             ? <DateEditor date={sel.date} onSave={(date) => mutate(() => patchItem(sel.key, { date }))} />
             : <div className="date">{sel.date.slice(0, 4)}년 {monthDay(sel.date)}</div>}
           {!markdown && sel.media?.map((m, i) => (
-            <MediaDetail key={m.src} m={m} title={sel.title}
+            <MediaDetail key={m.src} m={m} title={sel.title} cover={i === 0}
+              onCover={i > 0 ? () => void mutate(() => api("POST", `${itemPath(sel.key)}/cover`, JSON.stringify({ src: m.src }))) : undefined}
               onRemove={ed ? () => { if (window.confirm("이 미디어를 삭제할까요?")) void mutate(() => api("DELETE", `${itemPath(sel.key)}/media/${i}`)); } : undefined} />
           ))}
           {ed && (sel.media?.length ?? 0) < maxMediaCount && <div className="media-add"><MediaAdder onAdd={(file) => addMedia(sel.key, file)} /></div>}
@@ -843,7 +900,7 @@ export default function App() {
             </EditableText>
             <div className="lbl" style={{ paddingLeft: 0 }}>상세 내용</div>
           </div>}
-          {markdown ? <MarkdownBody markdown={sel.body!} /> : (
+          {markdown ? <MarkdownBody markdown={sel.body!} coverSrc={sel.media?.[0]?.src} onCover={setObsidianCover} /> : (
             <EditableText value={sel.body ?? sel.description} edit={ed} multiline label="내용" onSave={(body) => mutate(() => patchItem(sel.key, { body }))}>
               <p className="body">{sel.body ?? sel.description}</p>
             </EditableText>

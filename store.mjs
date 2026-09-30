@@ -69,6 +69,13 @@ export function openStore(dir = defaultStoreDir, { mediaGraceMs = 10 * 60_000 } 
       PRIMARY KEY (theme_id, vault_path)
     );
     CREATE INDEX IF NOT EXISTS sync_files_path ON sync_files (vault_path);
+    -- Obsidian 사건의 대표 이미지 선택(노트는 읽기 전용이라 따로 저장하고 동기화 때 다시 적용한다)
+    CREATE TABLE IF NOT EXISTS sync_covers (
+      theme_id TEXT NOT NULL REFERENCES themes(id) ON DELETE CASCADE,
+      item_id TEXT NOT NULL,
+      src TEXT NOT NULL,
+      PRIMARY KEY (theme_id, item_id)
+    );
     INSERT OR IGNORE INTO meta VALUES ('schema_version', '${schemaVersion}'), ('revision', '0');
   `);
   const version = () => db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value;
@@ -433,6 +440,35 @@ export async function addMedia(store, themeId, itemId, bytes, { contentType = ""
   if (!(await stat(target).catch(() => null))) await writeAtomic(target, bytes);
   const entry = { type: "image", src: `media/${name}`, alt: alt.trim() || `${item.title} 사진 ${media.length + 1}` };
   return saveItem(store, themeId, themeName, { ...item, media: [...media, entry] });
+}
+
+// Markdown 본문의 이미지 임베드 목록(Obsidian 사건의 대표 이미지 후보)
+export const markdownImages = (markdown = "") => [...markdown.matchAll(/!\[([^\]]*)\]\(([^)\s]+)\)/g)].map((m) => ({ alt: m[1], src: m[2] }));
+
+/**
+ * 대표 이미지(타임라인 카드에 보이는 첫 미디어)를 바꾼다. 화면 표시 선택이라 편집 허용·읽기 전용과 무관하다.
+ * - 일반 사건: media 안에서 해당 항목을 맨 앞으로 옮긴다.
+ * - Obsidian 사건: 노트 본문에 있는 이미지 중에서 고르고, 선택을 sync_covers에 저장해 다음 동기화에도 유지한다.
+ */
+export async function setCover(store, themeId, itemId, src) {
+  const { themeName, item } = findItem(store, themeId, itemId);
+  if (typeof src !== "string" || !src) throw new StoreError(400, "src가 필요합니다.");
+  if (isSynced(store, themeId)) {
+    const image = markdownImages(item.body).find((i) => i.src === src);
+    if (!image) throw new StoreError(404, "노트 본문에 없는 이미지입니다.");
+    transaction(store, () => {
+      store.db.prepare("INSERT INTO sync_covers (theme_id, item_id, src) VALUES (?, ?, ?) ON CONFLICT (theme_id, item_id) DO UPDATE SET src = excluded.src")
+        .run(themeId, itemId, src);
+      store.db.prepare("UPDATE items SET media = ? WHERE theme_id = ? AND id = ?")
+        .run(JSON.stringify([{ type: "image", src, alt: image.alt || item.title }]), themeId, itemId);
+    });
+    return findItem(store, themeId, itemId).item;
+  }
+  const media = item.media ?? [];
+  const index = media.findIndex((m) => m.src === src);
+  if (index < 0) throw new StoreError(404, "사건에 없는 미디어입니다.");
+  if (index === 0) return item;
+  return saveItem(store, themeId, themeName, { ...item, media: [media[index], ...media.filter((_, i) => i !== index)] });
 }
 
 export async function removeMedia(store, themeId, itemId, index) {

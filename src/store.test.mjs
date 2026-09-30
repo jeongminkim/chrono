@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { addMedia, deleteItem, deleteTheme, resetStore, exportDir, importDir, openStore, readTimeline, removeMedia, revision, updateItem } from "../store.mjs";
+import { addMedia, deleteItem, deleteTheme, resetStore, setCover, exportDir, importDir, openStore, readTimeline, removeMedia, revision, updateItem } from "../store.mjs";
 
 const item = (id, extra = {}) => ({ id, date: "2020-01-01", title: id, description: `${id} 설명`, tags: ["태그"], ...extra });
 const image = (...srcs) => ({ media: srcs.map((src) => ({ type: "image", src, alt: "대체 텍스트" })) });
@@ -131,6 +131,11 @@ test("화면 편집: 수정, 이미지 추가·삭제, 사건·테마 삭제", a
   for (let n = 3; n <= 5; n++) await addMedia(store, "a", "one", Buffer.concat([png, Buffer.from([n])]), { contentType: "image/png", alt: `사진${n}` });
   await assert.rejects(addMedia(store, "a", "one", png, { contentType: "image/png" }), (e) => e.status === 409);
   assert.equal((await removeMedia(store, "a", "one", 4)).media.length, 4);
+  // 대표 이미지 변경: 고른 미디어를 맨 앞으로 옮긴다.
+  const reordered = (await setCover(store, "a", "one", readTimeline(store).themes[0].items.find((i) => i.id === "one").media[2].src)).media;
+  assert.equal(reordered.length, 4);
+  assert.equal(reordered[0].alt, "사진3");
+  await assert.rejects(setCover(store, "a", "one", "media/none.png"), (e) => e.status === 404);
   await assert.rejects(removeMedia(store, "a", "one", 9), (e) => e.status === 404);
 
   // 같은 이미지를 쓰는 사건이 남아 있으면 파일을 지우지 않는다.

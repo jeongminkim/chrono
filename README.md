@@ -140,6 +140,6 @@ npm audit
 - vault 첨부: `GET /api/vault/<vault 기준 경로>` (동기화한 노트가 참조하는 파일만)
 - 미디어: `GET /api/media/<sha256>.<ext>`
 - 내부 API(컨테이너 간, 외부 차단): `/internal/v1/themes[/…]` — [규격](import/API_SPEC.md)
-- 편집(헤더 `X-Chrono-Edit: 1` 필요): `POST /api/import[?dryRun=1]`, `POST /api/reset`, `DELETE /api/themes/<테마>`, `DELETE|PATCH /api/themes/<테마>/items/<사건>`, `POST /api/themes/<테마>/items/<사건>/media`, `DELETE …/media/<순번>`
+- 편집(헤더 `X-Chrono-Edit: 1` 필요): `POST /api/import[?dryRun=1]`, `POST /api/reset`, `DELETE /api/themes/<테마>`, `DELETE|PATCH /api/themes/<테마>/items/<사건>`, `POST /api/themes/<테마>/items/<사건>/media`, `POST /api/themes/<테마>/items/<사건>/cover`(대표 이미지 변경, Obsidian 사건 포함), `DELETE …/media/<순번>`
 
 상세 설계는 [`documents/PROJECT_PLAN.md`](documents/PROJECT_PLAN.md), 데이터 저장소 구조를 다룬 [`documents/DATA_STORE_PLAN.md`](documents/DATA_STORE_PLAN.md), 편집 기능을 다룬 [`documents/EDIT_FEATURE_PLAN.md`](documents/EDIT_FEATURE_PLAN.md)를 참고하세요.
